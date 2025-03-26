@@ -1,14 +1,48 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="utf-8">
-    <title>Pyxel game</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monomane Game on Pyxel</title>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="pk-prompt-content">
-        <!-- Content from pk_prompt.html -->
-        <h1>Prompt</h1>
-        <pre>
+    <header class="navbar">
+        <div class="container nav-container">
+            <div class="logo">
+                <i class="fas fa-gamepad"></i>
+                <span>Monomane Game on Pyxel</span>
+            </div>
+            <nav>
+                <ul class="nav-links">
+                    <li><a href="index.html">ホーム</a></li>
+                    <li><a href="pk.html">ゲーム</a></li>
+                    <li><a href="pk_prompt.html">プロンプト</a></li>
+                    <li>
+                        <button class="theme-toggle" id="theme-toggle">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1>プロンプトと開発コード</h1>
+            <p>ゲーム開発に使用したプロンプトと生成されたソースコードです</p>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <div class="prompt-container">
+                <h2 class="section-title">開発プロンプト</h2>
+                <div class="code-block">
+                    <pre>
 python/Pyxelを使ったゲームを作ってください
 昔のATARIのディフェンダーみたいなゲームがほしいです
 
@@ -30,12 +64,31 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 
 やられたあとに出現する位置が初期化されてないです
 エフェクトの位置に出現せず、やられた位置にでちゃってます
-        </pre>
-        <h1>Generated Code</h1>
-        <p><a href="defnder_like.py" download>defnder_like.py</a></p>
+                    </pre>
+                </div>
 
-        <br />        <p><a href="pk.html" >Generated Game</a></p>
-    </div>
+                <h2 class="section-title">生成されたコード</h2>
+                <div class="code-action-buttons">
+                    <a href="defnder_like.py" download class="btn btn-primary">
+                        <i class="fas fa-download"></i> コードをダウンロード
+                    </a>
+                    <a href="pk.html" class="btn btn-outline-primary">
+                        <i class="fas fa-gamepad"></i> ゲームをプレイ
+                    </a>
+                </div>
 
-</body>
-</html>
+                <div class="code-description">
+                    <h3>コードの特徴</h3>
+                    <p>このPythonコードは、Pyxelエンジンを使用して古典的なATARIのディフェンダーに似たシューティングゲームを実装しています。以下のような機能があります：</p>
+                    
+                    <ul>
+                        <li>矢印キーによるプレイヤー操作</li>
+                        <li>Zキーによる弾の発射</li>
+                        <li>敵との衝突判定と爆発エフェクト</li>
+                        <li>プレイヤーが倒されたときの特殊エフェクト</li>
+                        <li>リスポーン時のアニメーション効果</li>
+                        <li>スコア計算システム</li>
+                    </ul>
+                    
+                    <p>完全なソースコードを確認するには、上のダウンロードボタンをクリックしてください。</p>
+                </div>

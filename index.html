@@ -3,21 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>sato-c.github.ioの簡易ページ</title>
+    <title>Monomane Game on Pyxel</title>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header>
-        <h1>生成ゲーム</h1>
+    <header class="navbar">
+        <div class="container nav-container">
+            <div class="logo">
+                <i class="fas fa-gamepad"></i>
+                <span>Monomane Game on Pyxel</span>
+            </div>
+            <nav>
+                <ul class="nav-links">
+                    <li><a href="index.html">ホーム</a></li>
+                    <li><a href="pk.html">ゲーム</a></li>
+                    <li><a href="pk_prompt.html">プロンプト</a></li>
+                    <li>
+                        <button class="theme-toggle" id="theme-toggle">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
     </header>
-    <main>
-        <section>
-            <h2></h2>
-            <p><a href="pk_prompt.html">プロンプトとソース</a> / <a href="./pk.html">pk ゲーム本体</a></p>
-        </section>
-    </main>
-    <footer>
-        <p>&copy; 2025 サイト名</p>
+
+    <section class="hero">
+        <div class="container">
+            <h1>モダンなレトロゲーム開発</h1>
+            <p>Pyxelを使って、レトロスタイルのゲームを簡単に作成できます。ATARIのディフェンダーのような懐かしいゲームを現代に蘇らせましょう。</p>
+            <div class="hero-buttons">
+                <a href="pk.html" class="btn btn-primary">ゲームをプレイ</a>
+                <a href="pk_prompt.html" class="btn btn-outline">プロンプトを見る</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">ゲームコレクション</h2>
+            <div class="cards">
+                <div class="card">
+                    <div class="card-image">
+                        <img src="pk_prompt.png" alt="ATARIディフェンダー風ゲーム">
+                    </div>
+                    <div class="card-content">
+                        <h3>ATARI ディフェンダー風ゲーム</h3>
+                        <p>80年代の名作アーケードゲーム「ディフェンダー」にインスパイアされた横スクロールシューティングゲームです。レトロなピクセルアートと効果音を楽しめます。</p>
+                        <div class="card-actions">
+                            <a href="pk.html" class="btn btn-primary"><i class="fas fa-gamepad"></i> ゲームをプレイ</a>
+                            <a href="pk_prompt.html" class="btn btn-outline-primary"><i class="fas fa-code"></i> プロンプトとコード</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image">
+                        <img src="holder.png" alt="Pyxelデモゲーム">
+                    </div>
+                    <div class="card-content">
+                        <h3>Pyxel デモゲーム</h3>
+                        <p>Pyxelエンジンの機能を紹介するデモゲームです。シンプルでありながら、Pyxelの可能性を示す様々な機能を実装しています。</p>
+                        <div class="card-actions">
+                            <a href="#" class="btn btn-primary"><i class="fas fa-gamepad"></i> ゲームをプレイ</a>
+                            <a href="#" class="btn btn-outline-primary"><i class="fas fa-code"></i> プロンプトとコード</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card coming-soon">
+                    <div class="card-image">
+                        <img src="holder.png" alt="近日公開">
+                        <div class="coming-soon-label">近日公開</div>
+                    </div>
+                    <div class="card-content">
+                        <h3>新作ゲーム（開発中）</h3>
+                        <p>現在開発中の新作レトロスタイルゲームです。AI生成プロンプトとPyxelエンジンを組み合わせた新しい体験をお楽しみに。</p>
+                        <div class="card-actions">
+                            <span class="btn btn-disabled"><i class="fas fa-hourglass-half"></i> 開発中</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">プロジェクト概要</h2>
+            <div class="code-section">
+                <h3>プロジェクトの目標</h3>
+                <p>このプロジェクトでは、Pyxelを使用して昔のATARIのディフェンダーに似たゲームを作成しています。レトロゲームの魅力を現代に再現することを目指しています。</p>
+                <h3>開発の課題</h3>
+                <p>開発過程で直面した主な課題：</p>
+                <ul>
+                    <li>キャラクターの表示に関する問題</li>
+                    <li>サウンド関連の非推奨APIの修正</li>
+                    <li>ゲームオーバー時の再起動問題</li>
+                    <li>エフェクトの実装と初期化状態の調整</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>ものまねゲーム　on Pyxel/h3>
+                    <p>レトロゲーム開発のためのモダンなプラットフォーム Pyxel とClaudeを使ってゲームを作る</p>
+                </div>
+                <div class="footer-section">
+                    <h3>リンク</h3>
+                    <ul class="footer-links">
+                        <li><a href="index.html">ホーム</a></li>
+                        <li><a href="pk.html">ゲーム</a></li>
+                        <li><a href="pk_prompt.html">プロンプト</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>フォローする</h3>
+                    <div class="social-links">
+                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-github"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-discord"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 >Monomane Game on Pyxel All Rights Reserved.</p>
+            </div>
+        </div>
     </footer>
+
+    <script src="script.js"></script>
 </body>
 </html>
