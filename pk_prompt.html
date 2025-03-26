@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <title>Pyxel game</title>
+</head>
+<body>
+    <div id="pk-prompt-content">
+        <!-- Content from pk_prompt.html -->
+        <h1>Prompt</h1>
+        <pre>
+python/Pyxelを使ったゲームを作ってください
+昔のATARIのディフェンダーみたいなゲームがほしいです
+
+キャラクタが表示されないです。
+弾は発射できます。敵に当たったらしき反応もあります。ゲームオーバー処理もされてます
+
+pyxel.sound(snd) is deprecated, use pyxel.sounds[snd] instead.
+という警告がありました
+
+修正してもらったけど自機と敵出ません
+それからゲームオーバーでR押すと以下のエラーが。
+thread '&lt;unnamed&gt;' panicked at pyxel-engine\src\pyxel.rs:144:5:
+Pyxel already initialized
+note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
+--- PyO3 is resuming a panic after fetching a PanicException from Python. ---
+
+自分がやられたときのエフェクトを複数の線が上下にひろがるよなエフェクトにして
+次の自機が出るときは複数の線が集まるエフェクトをいれることもできますか
+
+やられたあとに出現する位置が初期化されてないです
+エフェクトの位置に出現せず、やられた位置にでちゃってます
+        </pre>
+        <h1>Generated Code</h1>
+        <p><a href="defnder_like.py" download>defnder_like.py</a></p>
+
+        <br />        <p><a href="pk.html" >Generated Game</a></p>
+    </div>
+
+</body>
+</html>
