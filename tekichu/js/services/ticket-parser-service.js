@@ -1,0 +1,526 @@
+/**
+ * TicketParserService - JRA馬券QRコード解析
+ * 
+ * 馬券裏面のQR2つ（各95桁）を結合した190桁の数字列をパースする。
+ * 参考: https://ys223.blogspot.com/2019/07/jra.html
+ *       https://strangerxxx.hateblo.jp/entry/20250617/1750132067
+ * 
+ * 190桁フォーマット:
+ *   1桁目:    フォーマット種別（エントリの桁数を決定）
+ *   2-3桁:    開催場コード（01-10）
+ *   7-8桁:    年（下2桁）
+ *   9-10桁:   回
+ *   11-12桁:  日
+ *   13-14桁:  レース番号
+ *   15桁:     券種（0通常/1BOX/2ながし/3フォーメ/4QP/5応援）
+ *   29-32桁:  発券所コード
+ *   43桁〜:   式別+馬番+金額（券種・フォーマットで形式が変わる）
+ */
+
+import { BET_TYPES } from '../constants.js';
+
+export class TicketParserService {
+
+  // QR式別コード → 式別名
+  static BET_CODE_MAP = {
+    '1': '単勝', '2': '複勝', '3': '枠連',
+    '5': '馬連', '6': '馬単', '7': 'ワイド',
+    '8': '3連複', '9': '3連単',
+  };
+
+  // QR開催場コード → 競馬場ID
+  static VENUE_MAP = {
+    '01': 'jra_sapporo', '02': 'jra_hakodate', '03': 'jra_fukushima',
+    '04': 'jra_niigata', '05': 'jra_tokyo',    '06': 'jra_nakayama',
+    '07': 'jra_chukyo',  '08': 'jra_kyoto',    '09': 'jra_hanshin',
+    '10': 'jra_kokura',
+  };
+
+  /**
+   * 2つのQRコードの数字列を結合して190桁にする
+   * QR1（前半）とQR2（後半）を判別して正しい順序で結合
+   */
+  static combineQR(a, b) {
+    if (a.length !== 95 || b.length !== 95) {
+      throw new Error(`QR桁数不正: ${a.length}桁, ${b.length}桁（各95桁必要）`);
+    }
+
+    // a+bの順で開催場コードが有効か確認
+    const venueAB = a.substring(1, 3);
+    const venueNum = parseInt(venueAB);
+    if (venueNum >= 1 && venueNum <= 10) {
+      return a + b;
+    }
+    // 逆順を試す
+    const venueBA = b.substring(1, 3);
+    const venueNum2 = parseInt(venueBA);
+    if (venueNum2 >= 1 && venueNum2 <= 10) {
+      return b + a;
+    }
+
+    // どちらも判別できない場合、フィラーが少ない方を前とする
+    const fillerA = this._countTrailingFiller(a);
+    const fillerB = this._countTrailingFiller(b);
+    return fillerA <= fillerB ? a + b : b + a;
+  }
+
+  /**
+   * 末尾のフィラー（0123456789繰り返し）をカウント
+   */
+  static _countTrailingFiller(digits) {
+    let count = 0;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      if (parseInt(digits[i]) === i % 10) {
+        count++;
+      } else {
+        break;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * 190桁の数字列をパースしてレース情報+馬券データを返す
+   */
+  static parse(digits190) {
+    if (!digits190 || digits190.length !== 190) {
+      throw new Error(`190桁の数字列が必要です（${digits190?.length || 0}桁）`);
+    }
+
+    // ヘッダー解析
+    const format = parseInt(digits190[0]);            // フォーマット種別
+    const venueCode = digits190.substring(1, 3);      // 開催場コード
+    const year = parseInt(digits190.substring(6, 8));  // 年（下2桁）
+    const kai = parseInt(digits190.substring(8, 10));  // 回
+    const nichi = parseInt(digits190.substring(10, 12)); // 日
+    const raceNumber = parseInt(digits190.substring(12, 14)); // R
+    const ticketType = parseInt(digits190[14]);        // 券種
+
+    const racecourseId = this.VENUE_MAP[venueCode] || null;
+    const fullYear = year < 50 ? 2000 + year : 1900 + year;
+
+    const result = {
+      racecourseId,
+      venueCode,
+      year: fullYear,
+      kai,
+      nichi,
+      raceNumber,
+      ticketType,
+      ticketTypeName: this._ticketTypeName(ticketType),
+      format,
+      bets: [],
+    };
+
+    // 43桁目以降を券種に応じてパース
+    const body = digits190.substring(42); // 0-indexed: position 42 = 43桁目
+
+    try {
+      switch (ticketType) {
+        case 0: // 通常
+        case 5: // 応援馬券
+          result.bets = this._parseNormal(body, format);
+          break;
+        case 1: // ボックス
+          result.bets = this._parseBox(body, format);
+          break;
+        case 2: // ながし
+          result.bets = this._parseNagashi(body, format);
+          break;
+        case 3: // フォーメーション
+          result.bets = this._parseFormation(body, format);
+          break;
+        case 4: // クイックピック
+          result.bets = this._parseNormal(body, format);
+          break;
+        default:
+          console.warn('未対応の券種:', ticketType);
+      }
+    } catch (e) {
+      console.warn('馬券データのパースに失敗:', e.message);
+      // ヘッダーだけでも返す
+    }
+
+    return result;
+  }
+
+  /**
+   * 通常券・応援馬券・QP のパース
+   * フォーマット別エントリサイズ:
+   *   1,2: 8桁  [式別1][馬番2][金額5]
+   *   3,4: 10桁 [式別1][馬番A_2][馬番B_2][金額5]
+   *   5:   12桁 [式別1][馬番A_2][馬番B_2][馬番C_2][金額5]
+   */
+  static _parseNormal(body, format) {
+    const entrySize = this._getEntrySize(format);
+    const bets = [];
+    let pos = 0;
+
+    while (pos + entrySize <= body.length) {
+      const chunk = body.substring(pos, pos + entrySize);
+
+      // フィラー検出（式別コードが0ならデータ終了）
+      const betCode = chunk[0];
+      if (!this.BET_CODE_MAP[betCode]) break;
+
+      const amount = parseInt(chunk.substring(entrySize - 5)) * 100;
+      if (amount <= 0) break; // 金額0はデータ終了
+
+      let horses;
+      if (entrySize === 8) {
+        const h1 = parseInt(chunk.substring(1, 3));
+        horses = `${h1}`;
+      } else if (entrySize === 10) {
+        const h1 = parseInt(chunk.substring(1, 3));
+        const h2 = parseInt(chunk.substring(3, 5));
+        horses = h2 > 0 ? `${h1}-${h2}` : `${h1}`;
+      } else {
+        const h1 = parseInt(chunk.substring(1, 3));
+        const h2 = parseInt(chunk.substring(3, 5));
+        const h3 = parseInt(chunk.substring(5, 7));
+        if (h3 > 0) {
+          horses = `${h1}-${h2}-${h3}`;
+        } else if (h2 > 0) {
+          horses = `${h1}-${h2}`;
+        } else {
+          horses = `${h1}`;
+        }
+      }
+
+      bets.push({
+        betType: this.BET_CODE_MAP[betCode],
+        horses,
+        amount,
+      });
+
+      pos += entrySize;
+    }
+
+    return bets;
+  }
+
+  /**
+   * ボックスのパース
+   * フォーマット別:
+   *   1: [式別1][馬番2×5][金額5]  = 16桁
+   *   3: [式別1][馬番2×10][金額5] = 26桁
+   *   5: [式別1][馬番2×18][金額5] = 42桁
+   */
+  static _parseBox(body, format) {
+    const maxHorses = format <= 2 ? 5 : format <= 4 ? 10 : 18;
+    const entrySize = 1 + maxHorses * 2 + 5;
+    const bets = [];
+    let pos = 0;
+
+    while (pos + entrySize <= body.length) {
+      const chunk = body.substring(pos, pos + entrySize);
+      const betCode = chunk[0];
+      if (!this.BET_CODE_MAP[betCode]) break;
+
+      // 馬番を抽出（00は除く）
+      const horses = [];
+      for (let i = 0; i < maxHorses; i++) {
+        const h = parseInt(chunk.substring(1 + i * 2, 3 + i * 2));
+        if (h > 0) horses.push(h);
+      }
+      if (horses.length === 0) break;
+
+      const amountPer = parseInt(chunk.substring(entrySize - 5)) * 100;
+      if (amountPer <= 0) break;
+
+      const combCount = this._boxCombinations(betCode, horses.length);
+      const totalAmount = amountPer * combCount;
+
+      bets.push({
+        betType: this.BET_CODE_MAP[betCode],
+        horses: `BOX ${horses.join(',')}`,
+        amount: totalAmount,
+        ticketFormat: 'ボックス',
+        detail: `${combCount}点×${amountPer}円`,
+      });
+
+      pos += entrySize;
+    }
+
+    return bets;
+  }
+
+  /**
+   * ながしのパース
+   * [式別1][パターン1][1着ビット18][2着ビット18][（3着ビット18）][金額5][マルチ1]
+   */
+  static _parseNagashi(body, format) {
+    const bets = [];
+    let pos = 0;
+
+    const betCode = body[pos];
+    if (!this.BET_CODE_MAP[betCode]) return bets;
+    pos += 1;
+
+    const pattern = parseInt(body[pos]);
+    pos += 1;
+
+    const betType = this.BET_CODE_MAP[betCode];
+    const isTriple = betCode === '8' || betCode === '9'; // 3連系
+    const needsThirdBitmap = isTriple;
+
+    // ビットマップ読み取り
+    const bitmap1 = this._parseBitmap(body.substring(pos, pos + 18));
+    pos += 18;
+    const bitmap2 = this._parseBitmap(body.substring(pos, pos + 18));
+    pos += 18;
+
+    let bitmap3 = [];
+    if (needsThirdBitmap) {
+      bitmap3 = this._parseBitmap(body.substring(pos, pos + 18));
+      pos += 18;
+    }
+
+    if (pos + 6 > body.length) return bets;
+
+    const amountPer = parseInt(body.substring(pos, pos + 5)) * 100;
+    pos += 5;
+    const multi = parseInt(body[pos]) === 1;
+    pos += 1;
+
+    if (amountPer <= 0) return bets;
+
+    // 軸・相手を判定してホース表記を作る
+    let horsesStr;
+    let combCount;
+
+    if (isTriple) {
+      // 3連系ながし
+      combCount = this._nagashiTripleCombinations(betCode, pattern, bitmap1, bitmap2, bitmap3);
+      if (multi) combCount *= (betCode === '9' ? 6 : 3); // 3連単マルチ×6, 3連複マルチ×3
+
+      const axis = bitmap1.join(',');
+      const partners2 = bitmap2.join(',');
+      const partners3 = bitmap3.join(',');
+      horsesStr = `流 ${axis}→${partners2}→${partners3}`;
+    } else {
+      // 2連系ながし
+      combCount = bitmap1.length * bitmap2.length;
+      // 同じ馬番の重複分を引く
+      const overlap = bitmap1.filter(h => bitmap2.includes(h)).length;
+      combCount -= overlap;
+      if (multi && betCode === '6') combCount *= 2; // 馬単マルチ
+
+      const axis = bitmap1.join(',');
+      const partners = bitmap2.join(',');
+      horsesStr = `流 ${axis}→${partners}`;
+    }
+
+    const totalAmount = amountPer * combCount;
+
+    bets.push({
+      betType,
+      horses: horsesStr,
+      amount: totalAmount,
+      ticketFormat: multi ? 'ながしマルチ' : 'ながし',
+      detail: `${combCount}点×${amountPer}円`,
+    });
+
+    return bets;
+  }
+
+  /**
+   * フォーメーションのパース
+   * [式別1][1着ビット18][2着ビット18][（3着ビット18）][金額5][マルチ1]
+   */
+  static _parseFormation(body, format) {
+    const bets = [];
+    let pos = 0;
+
+    const betCode = body[pos];
+    if (!this.BET_CODE_MAP[betCode]) return bets;
+    pos += 1;
+
+    const betType = this.BET_CODE_MAP[betCode];
+    const isTriple = betCode === '8' || betCode === '9';
+
+    const bitmap1 = this._parseBitmap(body.substring(pos, pos + 18));
+    pos += 18;
+    const bitmap2 = this._parseBitmap(body.substring(pos, pos + 18));
+    pos += 18;
+
+    let bitmap3 = [];
+    if (isTriple) {
+      bitmap3 = this._parseBitmap(body.substring(pos, pos + 18));
+      pos += 18;
+    }
+
+    if (pos + 6 > body.length) return bets;
+
+    const amountPer = parseInt(body.substring(pos, pos + 5)) * 100;
+    pos += 5;
+    const multi = parseInt(body[pos]) === 1;
+    pos += 1;
+
+    if (amountPer <= 0) return bets;
+
+    // 組み合わせ数計算
+    let combCount;
+    if (isTriple) {
+      combCount = this._formationTripleCombinations(betCode, bitmap1, bitmap2, bitmap3);
+    } else {
+      combCount = this._formationDoubleCombinations(betCode, bitmap1, bitmap2);
+    }
+    if (multi) {
+      if (betCode === '9') combCount *= 6;
+      else if (betCode === '6') combCount *= 2;
+      else if (betCode === '8') combCount *= 3;
+    }
+
+    const totalAmount = amountPer * combCount;
+
+    const set1 = bitmap1.join(',');
+    const set2 = bitmap2.join(',');
+    const set3 = bitmap3.length > 0 ? bitmap3.join(',') : '';
+    const horsesStr = set3
+      ? `フォメ {${set1}}-{${set2}}-{${set3}}`
+      : `フォメ {${set1}}-{${set2}}`;
+
+    bets.push({
+      betType,
+      horses: horsesStr,
+      amount: totalAmount,
+      ticketFormat: multi ? 'フォーメーションマルチ' : 'フォーメーション',
+      detail: `${combCount}点×${amountPer}円`,
+    });
+
+    return bets;
+  }
+
+  // --- ユーティリティ ---
+
+  static _getEntrySize(format) {
+    if (format <= 2) return 8;
+    if (format <= 4) return 10;
+    return 12;
+  }
+
+  static _parseBitmap(str18) {
+    const horses = [];
+    for (let i = 0; i < 18 && i < str18.length; i++) {
+      if (str18[i] === '1') {
+        horses.push(i + 1); // 1-indexed
+      }
+    }
+    return horses;
+  }
+
+  static _boxCombinations(betCode, n) {
+    switch (betCode) {
+      case '1': case '2': return n; // 単勝/複勝
+      case '3': case '5': case '7': return this._nC2(n); // 枠連/馬連/ワイド
+      case '6': return n * (n - 1); // 馬単
+      case '8': return this._nC3(n); // 3連複
+      case '9': return n * (n - 1) * (n - 2); // 3連単
+      default: return n;
+    }
+  }
+
+  static _nagashiTripleCombinations(betCode, pattern, b1, b2, b3) {
+    // 簡易計算（正確な計算は非常に複雑）
+    // 軸-相手-相手パターンが最も一般的
+    const n1 = b1.length;
+    const n2 = b2.length;
+    const n3 = b3.length;
+
+    if (betCode === '9') {
+      // 3連単: 各位置の組み合わせ（同一馬除外）
+      // 概算: n1 * n2 * n3 から重複を引く
+      let count = 0;
+      for (const h1 of b1) {
+        for (const h2 of b2) {
+          if (h2 === h1) continue;
+          for (const h3 of b3) {
+            if (h3 === h1 || h3 === h2) continue;
+            count++;
+          }
+        }
+      }
+      return count;
+    } else {
+      // 3連複: 組み合わせ（順不同）
+      const seen = new Set();
+      for (const h1 of b1) {
+        for (const h2 of b2) {
+          if (h2 === h1) continue;
+          for (const h3 of b3) {
+            if (h3 === h1 || h3 === h2) continue;
+            const key = [h1, h2, h3].sort((a, b) => a - b).join(',');
+            seen.add(key);
+          }
+        }
+      }
+      return seen.size;
+    }
+  }
+
+  static _formationDoubleCombinations(betCode, b1, b2) {
+    let count = 0;
+    if (betCode === '6') {
+      // 馬単: 順序あり
+      for (const h1 of b1) {
+        for (const h2 of b2) {
+          if (h1 !== h2) count++;
+        }
+      }
+    } else {
+      // 馬連/ワイド/枠連: 順序なし
+      const seen = new Set();
+      for (const h1 of b1) {
+        for (const h2 of b2) {
+          if (h1 !== h2) {
+            const key = [h1, h2].sort((a, b) => a - b).join(',');
+            seen.add(key);
+          }
+        }
+      }
+      count = seen.size;
+    }
+    return count;
+  }
+
+  static _formationTripleCombinations(betCode, b1, b2, b3) {
+    if (betCode === '9') {
+      let count = 0;
+      for (const h1 of b1) {
+        for (const h2 of b2) {
+          if (h2 === h1) continue;
+          for (const h3 of b3) {
+            if (h3 === h1 || h3 === h2) continue;
+            count++;
+          }
+        }
+      }
+      return count;
+    } else {
+      const seen = new Set();
+      for (const h1 of b1) {
+        for (const h2 of b2) {
+          if (h2 === h1) continue;
+          for (const h3 of b3) {
+            if (h3 === h1 || h3 === h2) continue;
+            const key = [h1, h2, h3].sort((a, b) => a - b).join(',');
+            seen.add(key);
+          }
+        }
+      }
+      return seen.size;
+    }
+  }
+
+  static _nC2(n) { return n * (n - 1) / 2; }
+  static _nC3(n) { return n * (n - 1) * (n - 2) / 6; }
+
+  static _ticketTypeName(type) {
+    const names = {
+      0: '通常', 1: 'ボックス', 2: 'ながし',
+      3: 'フォーメーション', 4: 'クイックピック', 5: '応援馬券',
+    };
+    return names[type] || '不明';
+  }
+}
