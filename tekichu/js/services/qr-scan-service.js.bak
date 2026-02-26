@@ -152,31 +152,10 @@ export class QRScanService {
 
         const imageData = this.ctx.getImageData(0, 0, vw, vh);
 
-        // デバッグ: 先頭ピクセル4値(RGBA)と中央ピクセル
-        if (this.frameCount % 60 === 1) {
-          const d = imageData.data;
-          const px0 = `[0]=${d[0]},${d[1]},${d[2]},${d[3]}`;
-          const mid = (Math.floor(vh / 2) * vw + Math.floor(vw / 2)) * 4;
-          const pxM = `[mid]=${d[mid]},${d[mid+1]},${d[mid+2]},${d[mid+3]}`;
-          const allBlack = d[0] === 0 && d[1] === 0 && d[2] === 0
-                        && d[mid] === 0 && d[mid+1] === 0 && d[mid+2] === 0;
-          this._debug(
-            `f:${this.frameCount} ${vw}x${vh} px:${px0} ${pxM} black:${allBlack} imgLen:${d.length}`
-          );
-        }
-
         try {
           const code = jsQR(imageData.data, imageData.width, imageData.height, {
             inversionAttempts: 'attemptBoth',
           });
-
-          // デバッグ: jsQRの戻り値
-          if (this.frameCount % 60 === 1) {
-            const ret = code === null ? 'null' : code === undefined ? 'undefined' : `found:${code.data?.length}chars`;
-            this._debug(
-              `jsQR result: ${ret}`
-            );
-          }
 
           if (code && code.data) {
             this._debug(`検出: "${code.data.substring(0, 40)}..." (${code.data.length}文字)`);
@@ -240,8 +219,7 @@ export class QRScanService {
   static _debug(msg) {
     console.log('[QR]', msg);
     if (this.debugEl) {
-      const time = new Date().toLocaleTimeString('ja', { hour12: false });
-      this.debugEl.textContent = `${time} ${msg}`;
+      this.debugEl.textContent = msg;
     }
   }
 }
