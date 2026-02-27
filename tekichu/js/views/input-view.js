@@ -151,7 +151,7 @@ export class InputView {
       }
 
       if (result.bets.length === 0) {
-        const debugInfo = `順序:${order} 形式:${result.format} 券種:${result.ticketType}`;
+        const debugInfo = `順序:${order} 形式:${result.format} 券種:${result.ticketType} offset:${result.bodyOffset}`;
         NotificationManager.warning(`QR読取成功。馬券データの解析に失敗しました（${debugInfo}）。ヘッダー情報のみ反映します。`);
         this._applyHeaderToForm(result);
       } else if (result.bets.length === 1) {

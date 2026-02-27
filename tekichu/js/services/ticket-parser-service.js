@@ -140,36 +140,75 @@ export class TicketParserService {
       bets: [],
     };
 
-    // 43桁目以降を券種に応じてパース
-    const body = digits190.substring(42); // 0-indexed: position 42 = 43桁目
+    // 本文開始位置に揺れがあるケースに備え、複数オフセットを試して最善を採用
+    // 既定は43桁目(0-index 42)
+    const bodyOffsets = [42, 41, 43, 40, 44];
+    let best = { bets: [], score: -Infinity, bodyOffset: 42 };
 
-    try {
-      switch (ticketType) {
-        case 0: // 通常
-        case 5: // 応援馬券
-          result.bets = this._parseNormal(body, format);
-          break;
-        case 1: // ボックス
-          result.bets = this._parseBox(body, format);
-          break;
-        case 2: // ながし
-          result.bets = this._parseNagashi(body, format);
-          break;
-        case 3: // フォーメーション
-          result.bets = this._parseFormation(body, format);
-          break;
-        case 4: // クイックピック
-          result.bets = this._parseNormal(body, format);
-          break;
-        default:
-          console.warn('未対応の券種:', ticketType);
+    for (const bodyOffset of bodyOffsets) {
+      const body = digits190.substring(bodyOffset);
+      try {
+        const bets = this._parseByTicketType(body, format, ticketType);
+        const score = this._scoreParsedBets(bets, bodyOffset);
+        if (score > best.score) {
+          best = { bets, score, bodyOffset };
+        }
+      } catch (e) {
+        // ignore candidate
       }
-    } catch (e) {
-      console.warn('馬券データのパースに失敗:', e.message);
-      // ヘッダーだけでも返す
+    }
+
+    result.bets = best.bets;
+    result.bodyOffset = best.bodyOffset;
+    if (best.bodyOffset !== 42) {
+      console.log(`[QR parse] bodyOffset adjusted: ${best.bodyOffset}`);
     }
 
     return result;
+  }
+
+  static _parseByTicketType(body, format, ticketType) {
+    switch (ticketType) {
+      case 0: // 通常
+      case 5: // 応援馬券
+        return this._parseNormal(body, format);
+      case 1: // ボックス
+        return this._parseBox(body, format);
+      case 2: // ながし
+        return this._parseNagashi(body, format);
+      case 3: // フォーメーション
+        return this._parseFormation(body, format);
+      case 4: // クイックピック
+        return this._parseNormal(body, format);
+      default:
+        console.warn('未対応の券種:', ticketType);
+        return [];
+    }
+  }
+
+  static _scoreParsedBets(bets, bodyOffset) {
+    if (!Array.isArray(bets) || bets.length === 0) return -1000 - Math.abs(42 - bodyOffset);
+
+    let score = bets.length * 100;
+    score -= Math.abs(42 - bodyOffset) * 2;
+
+    for (const bet of bets) {
+      const amount = Number(bet.amount || 0);
+      if (Number.isFinite(amount) && amount > 0) {
+        score += 20;
+        if (amount >= 100 && amount <= 100000) score += 12;
+        else if (amount > 300000) score -= 30;
+        if (amount % 100 === 0) score += 5;
+      } else {
+        score -= 50;
+      }
+
+      if (typeof bet.horses === 'string' && bet.horses.length > 0) {
+        score += 3;
+      }
+    }
+
+    return score;
   }
 
   /**
