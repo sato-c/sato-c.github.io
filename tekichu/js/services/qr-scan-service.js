@@ -319,7 +319,15 @@ export class QRScanService {
       { combined: a + b, order: '1->2' },
       { combined: b + a, order: '2->1' },
     ];
-    let best = { ok: false, score: -Infinity, order: null, reason: 'no-candidate' };
+    let best = {
+      ok: false,
+      score: -Infinity,
+      order: null,
+      reason: 'no-candidate',
+      headerScore: -Infinity,
+      parseScore: -Infinity,
+      betCount: 0,
+    };
 
     for (const c of candidates) {
       try {
@@ -329,20 +337,28 @@ export class QRScanService {
         const parsed = TicketParserService.parse(c.combined);
         const parseScore = Number.isFinite(parsed.parseScore) ? parsed.parseScore : -1000;
         const betCount = Array.isArray(parsed.bets) ? parsed.bets.length : 0;
-        const score = headerScore * 10 + parseScore + betCount * 20;
+        const score = headerScore * 20 + parseScore + betCount * 30;
 
         if (score > best.score) {
-          best = { ok: false, score, order: c.order, reason: 'low-score' };
+          best = { ok: false, score, order: c.order, reason: 'low-score', headerScore, parseScore, betCount };
         }
       } catch (e) {
         // ignore invalid candidate
       }
     }
 
-    // しきい値: 妥当な組み合わせなら大抵プラスに乗る
-    if (best.score >= 0) {
+    // 厳しすぎるブロックを避ける:
+    // ヘッダーが十分妥当なら許可（単勝など取りこぼし対策）
+    if (best.headerScore >= 10) {
       best.ok = true;
-      best.reason = 'ok';
+      best.reason = 'header-ok';
+      return best;
+    }
+
+    // ヘッダーが弱い場合のみ、解析スコアで判定
+    if (best.parseScore >= -150 || best.betCount > 0 || best.score >= -50) {
+      best.ok = true;
+      best.reason = 'score-ok';
     }
     return best;
   }
