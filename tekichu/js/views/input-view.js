@@ -228,6 +228,17 @@ export class InputView {
 
   static _parseBestOrder(code1, code2) {
     const candidates = [];
+    let heuristicCombined = null;
+    let heuristicOrder = null;
+    try {
+      heuristicCombined = TicketParserService.combineQR(code1, code2);
+      if (heuristicCombined === code1 + code2) heuristicOrder = '1->2';
+      else if (heuristicCombined === code2 + code1) heuristicOrder = '2->1';
+      else heuristicOrder = 'heuristic';
+    } catch (e) {
+      // ignore
+    }
+
     const pushCandidate = (combined, order) => {
       if (!combined || combined.length !== 190) return;
       if (candidates.some(c => c.combined === combined)) return;
@@ -237,7 +248,9 @@ export class InputView {
           ? TicketParserService._scoreCombinedDigits(combined)
           : 0;
         const scoreByParse = Number.isFinite(result.parseScore) ? result.parseScore : 0;
-        const score = scoreByParse * 10 + scoreByHeader;
+        const suspicious = this._countSuspiciousParsedBets(result);
+        const isHeuristicOrder = heuristicOrder && order === heuristicOrder;
+        const score = scoreByHeader * 100 + scoreByParse + (isHeuristicOrder ? 300 : 0) - suspicious * 400;
         candidates.push({ combined, order, result, score });
       } catch (e) {
         // ignore invalid candidate
@@ -247,11 +260,8 @@ export class InputView {
     pushCandidate(code1 + code2, '1->2');
     pushCandidate(code2 + code1, '2->1');
 
-    try {
-      const combinedByHeuristic = TicketParserService.combineQR(code1, code2);
-      pushCandidate(combinedByHeuristic, 'heuristic');
-    } catch (e) {
-      // ignore
+    if (heuristicCombined) {
+      pushCandidate(heuristicCombined, 'heuristic');
     }
 
     if (candidates.length === 0) {
@@ -260,6 +270,33 @@ export class InputView {
 
     candidates.sort((a, b) => b.score - a.score);
     return candidates[0];
+  }
+
+  static _countSuspiciousParsedBets(result) {
+    if (!result || !Array.isArray(result.bets)) return 10;
+    if (result.bets.length === 0) return 6;
+
+    let count = 0;
+    let total = 0;
+    for (const bet of result.bets) {
+      const amount = Number(bet.amount || 0);
+      total += Number.isFinite(amount) ? amount : 0;
+      if (!Number.isFinite(amount) || amount <= 0) count += 2;
+      if (amount > 500000) count += 5;
+      else if (amount > 200000) count += 2;
+      if (amount % 100 !== 0) count += 1;
+    }
+    if (total > 1000000) count += 4;
+
+    // 応援馬券は「単勝+複勝 同一馬」が崩れていたら強く減点
+    if (result.ticketType === 5) {
+      const tansho = result.bets.find(b => b.betType === '単勝');
+      const fukusho = result.bets.find(b => b.betType === '複勝');
+      const ok = tansho && fukusho && tansho.horses === fukusho.horses;
+      if (!ok) count += 6;
+    }
+
+    return count;
   }
 
   static _applyHeaderToForm(result) {
