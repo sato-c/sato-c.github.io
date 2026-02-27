@@ -11,6 +11,7 @@ export class QRScanService {
   static stream = null;
   static scanning = false;
   static scannedCodes = [];
+  static scannedMeta = [];
   static onComplete = null;
   static animFrame = null;
   static statusEl = null;
@@ -32,6 +33,7 @@ export class QRScanService {
 
     this.onComplete = callback;
     this.scannedCodes = [];
+    this.scannedMeta = [];
     this.scanning = true;
     this.frameCount = 0;
     this.scanBusy = false;
@@ -145,7 +147,7 @@ export class QRScanService {
         const vh = this.video.videoHeight;
 
         if (vw > 0 && vh > 0) {
-          const decoded = await this._detectFromFrame(vw, vh);
+          const found = await this._detectFromFrame(vw, vh);
 
           // デバッグ: ピクセル値+検出結果を1行で
           if (this.frameCount % 60 === 1 && this.canvas.width > 0 && this.canvas.height > 0) {
@@ -156,16 +158,17 @@ export class QRScanService {
             const mid = (Math.floor(sh / 2) * sw + Math.floor(sw / 2)) * 4;
             const black = d[0] === 0 && d[1] === 0 && d[2] === 0 &&
               d[mid] === 0 && d[mid + 1] === 0 && d[mid + 2] === 0;
-            const dataLen = typeof decoded === 'string' ? decoded.length : 0;
-            const ret = decoded ? `found:${dataLen}ch` : 'null';
+            const dataLen = typeof found?.text === 'string' ? found.text.length : 0;
+            const ret = found ? `found:${dataLen}ch(${found.engine})` : 'null';
             this._debug(
               `f:${this.frameCount} ${vw}→${sw}x${sh} black:${black} mid:${d[mid]},${d[mid+1]},${d[mid+2]} qr:${ret}`
             );
           }
 
-          if (decoded) {
-            this._debug(`検出! "${decoded.substring(0, 50)}..." (${decoded.length}文字)`);
-            this._handleCode(decoded);
+          if (found?.text) {
+            const profileLabel = `${found.profile.maxDim}/${found.profile.cropRatio}`;
+            this._debug(`検出(${found.engine}, ${profileLabel}) "${found.text.substring(0, 50)}..." (${found.text.length}文字)`);
+            this._handleCode(found.text, found);
           }
         }
       }
@@ -195,14 +198,16 @@ export class QRScanService {
       this.ctx.drawImage(this.video, srcX, srcY, srcW, srcH, 0, 0, dstW, dstH);
 
       const nativeDecoded = await this._detectWithNative(this.canvas);
-      if (nativeDecoded) return nativeDecoded;
+      if (nativeDecoded) {
+        return { text: nativeDecoded, engine: 'native', profile };
+      }
 
       const imageData = this.ctx.getImageData(0, 0, dstW, dstH);
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: 'attemptBoth',
       });
       if (code && typeof code.data === 'string' && code.data.length > 0) {
-        return code.data;
+        return { text: code.data, engine: 'jsQR', profile };
       }
     }
     return null;
@@ -238,7 +243,7 @@ export class QRScanService {
     return null;
   }
 
-  static _handleCode(data) {
+  static _handleCode(data, meta = null) {
     const cleaned = data.replace(/\D/g, '');
 
     if (cleaned.length !== 95) {
@@ -250,7 +255,8 @@ export class QRScanService {
     if (this.scannedCodes.includes(cleaned)) return;
 
     this.scannedCodes.push(cleaned);
-    this._debug(`QR${this.scannedCodes.length} OK: ${cleaned.substring(0, 30)}...`);
+    this.scannedMeta.push(meta || { engine: 'unknown', profile: null });
+    this._debug(`QR${this.scannedCodes.length} OK(${meta?.engine || 'unknown'}): ${cleaned.substring(0, 30)}...`);
 
     if (this.scannedCodes.length === 1) {
       this.statusEl.textContent = '1つ目読取OK！もう1つのQRに向けてください（2/2）';
@@ -263,9 +269,10 @@ export class QRScanService {
       this.statusEl.textContent = '読取完了！';
       const cb = this.onComplete;
       const codes = [...this.scannedCodes];
+      const metaList = [...this.scannedMeta];
       setTimeout(() => {
         this.stop();
-        if (cb) cb(codes[0], codes[1]);
+        if (cb) cb(codes[0], codes[1], { sources: metaList });
       }, 500);
     }
   }

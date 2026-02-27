@@ -132,22 +132,27 @@ export class InputView {
 
   static startQRScan() {
     try {
-      QRScanService.start((code1, code2) => {
-        this._handleQRResult(code1, code2);
+      QRScanService.start((code1, code2, scanMeta) => {
+        this._handleQRResult(code1, code2, scanMeta);
       });
     } catch (e) {
       NotificationManager.error(e.message);
     }
   }
 
-  static _handleQRResult(code1, code2) {
+  static _handleQRResult(code1, code2, scanMeta = null) {
     try {
-      const combined = TicketParserService.combineQR(code1, code2);
-      const result = TicketParserService.parse(combined);
+      const best = this._parseBestOrder(code1, code2);
+      const { result, order } = best;
       this.qrResult = result;
+      if (scanMeta?.sources?.length) {
+        const engines = scanMeta.sources.map(s => s?.engine || 'unknown').join(' + ');
+        console.log('[QR] sources:', engines, 'order:', order);
+      }
 
       if (result.bets.length === 0) {
-        NotificationManager.warning('QR読取成功。馬券データの解析に失敗しました。ヘッダー情報のみ反映します。');
+        const debugInfo = `順序:${order} 形式:${result.format} 券種:${result.ticketType}`;
+        NotificationManager.warning(`QR読取成功。馬券データの解析に失敗しました（${debugInfo}）。ヘッダー情報のみ反映します。`);
         this._applyHeaderToForm(result);
       } else if (result.bets.length === 1) {
         NotificationManager.success('QR読取完了！');
@@ -160,6 +165,41 @@ export class InputView {
       console.error('QR解析エラー:', e);
       NotificationManager.error('QRコードの解析に失敗しました: ' + e.message);
     }
+  }
+
+  static _parseBestOrder(code1, code2) {
+    const candidates = [];
+    const pushCandidate = (combined, order) => {
+      if (!combined || combined.length !== 190) return;
+      if (candidates.some(c => c.combined === combined)) return;
+      try {
+        const result = TicketParserService.parse(combined);
+        const scoreByHeader = TicketParserService._scoreCombinedDigits
+          ? TicketParserService._scoreCombinedDigits(combined)
+          : 0;
+        const score = result.bets.length * 100 + scoreByHeader;
+        candidates.push({ combined, order, result, score });
+      } catch (e) {
+        // ignore invalid candidate
+      }
+    };
+
+    pushCandidate(code1 + code2, '1->2');
+    pushCandidate(code2 + code1, '2->1');
+
+    try {
+      const combinedByHeuristic = TicketParserService.combineQR(code1, code2);
+      pushCandidate(combinedByHeuristic, 'heuristic');
+    } catch (e) {
+      // ignore
+    }
+
+    if (candidates.length === 0) {
+      throw new Error('2つのQRを190桁として解析できませんでした');
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0];
   }
 
   static _applyHeaderToForm(result) {
