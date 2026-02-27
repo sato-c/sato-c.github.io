@@ -140,37 +140,31 @@ export class TicketParserService {
       bets: [],
     };
 
-    // 本文開始位置に揺れがあるケースに備え、複数オフセットを試して最善を採用
-    // 1st pass: 既定近傍のみ（誤検出抑制）
-    const primaryOffsets = [42, 41, 43];
-    let best = { bets: [], score: -Infinity, bodyOffset: 42 };
+    // 本文開始位置は原則 42 固定。42で成立するならそれを最優先する。
+    let best = this._tryParseAtOffset(digits190, format, ticketType, 42);
+    if (best.bets.length > 0) {
+      result.bets = best.bets;
+      result.bodyOffset = 42;
+      result.parseScore = best.score;
+      return result;
+    }
 
+    // 42が全滅時のみ、近傍を試す
+    const primaryOffsets = [41, 43];
     for (const bodyOffset of primaryOffsets) {
-      const body = digits190.substring(bodyOffset);
-      try {
-        const bets = this._parseByTicketType(body, format, ticketType);
-        const score = this._scoreParsedBets(bets, bodyOffset, ticketType);
-        if (score > best.score) {
-          best = { bets, score, bodyOffset };
-        }
-      } catch (e) {
-        // ignore candidate
+      const cand = this._tryParseAtOffset(digits190, format, ticketType, bodyOffset);
+      if (cand.score > best.score) {
+        best = cand;
       }
     }
 
     // 2nd pass: 全滅時のみ探索範囲を拡張（単勝1点などの取りこぼし救済）
     if (best.score <= -1000) {
       for (let bodyOffset = 36; bodyOffset <= 50; bodyOffset++) {
-        if (primaryOffsets.includes(bodyOffset)) continue;
-        const body = digits190.substring(bodyOffset);
-        try {
-          const bets = this._parseByTicketType(body, format, ticketType);
-          const score = this._scoreParsedBets(bets, bodyOffset, ticketType);
-          if (score > best.score) {
-            best = { bets, score, bodyOffset };
-          }
-        } catch (e) {
-          // ignore candidate
+        if (bodyOffset === 42 || primaryOffsets.includes(bodyOffset)) continue;
+        const cand = this._tryParseAtOffset(digits190, format, ticketType, bodyOffset);
+        if (cand.score > best.score) {
+          best = cand;
         }
       }
     }
@@ -183,6 +177,17 @@ export class TicketParserService {
     }
 
     return result;
+  }
+
+  static _tryParseAtOffset(digits190, format, ticketType, bodyOffset) {
+    try {
+      const body = digits190.substring(bodyOffset);
+      const bets = this._parseByTicketType(body, format, ticketType);
+      const score = this._scoreParsedBets(bets, bodyOffset, ticketType);
+      return { bets, score, bodyOffset };
+    } catch (e) {
+      return { bets: [], score: -Infinity, bodyOffset };
+    }
   }
 
   static _parseByTicketType(body, format, ticketType) {
