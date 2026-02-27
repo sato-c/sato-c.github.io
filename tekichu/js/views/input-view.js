@@ -177,7 +177,8 @@ export class InputView {
         const scoreByHeader = TicketParserService._scoreCombinedDigits
           ? TicketParserService._scoreCombinedDigits(combined)
           : 0;
-        const score = result.bets.length * 100 + scoreByHeader;
+        const scoreByParse = Number.isFinite(result.parseScore) ? result.parseScore : 0;
+        const score = scoreByParse * 10 + scoreByHeader;
         candidates.push({ combined, order, result, score });
       } catch (e) {
         // ignore invalid candidate

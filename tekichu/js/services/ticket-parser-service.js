@@ -142,7 +142,7 @@ export class TicketParserService {
 
     // 本文開始位置に揺れがあるケースに備え、複数オフセットを試して最善を採用
     // 既定は43桁目(0-index 42)
-    const bodyOffsets = [42, 41, 43, 40, 44];
+    const bodyOffsets = [42, 41, 43];
     let best = { bets: [], score: -Infinity, bodyOffset: 42 };
 
     for (const bodyOffset of bodyOffsets) {
@@ -160,6 +160,7 @@ export class TicketParserService {
 
     result.bets = best.bets;
     result.bodyOffset = best.bodyOffset;
+    result.parseScore = best.score;
     if (best.bodyOffset !== 42) {
       console.log(`[QR parse] bodyOffset adjusted: ${best.bodyOffset}`);
     }
@@ -189,16 +190,21 @@ export class TicketParserService {
   static _scoreParsedBets(bets, bodyOffset) {
     if (!Array.isArray(bets) || bets.length === 0) return -1000 - Math.abs(42 - bodyOffset);
 
-    let score = bets.length * 100;
-    score -= Math.abs(42 - bodyOffset) * 2;
+    let score = bets.length * 20;
+    score -= Math.abs(42 - bodyOffset) * 15;
 
+    if (bets.length > 20) score -= 200;
+
+    let total = 0;
     for (const bet of bets) {
       const amount = Number(bet.amount || 0);
+      total += Number.isFinite(amount) ? amount : 0;
       if (Number.isFinite(amount) && amount > 0) {
-        score += 20;
-        if (amount >= 100 && amount <= 100000) score += 12;
-        else if (amount > 300000) score -= 30;
-        if (amount % 100 === 0) score += 5;
+        score += 12;
+        if (amount >= 100 && amount <= 100000) score += 20;
+        if (amount > 300000) score -= 180;
+        if (amount > 100000) score -= 60;
+        if (amount % 100 === 0) score += 8;
       } else {
         score -= 50;
       }
@@ -207,6 +213,8 @@ export class TicketParserService {
         score += 3;
       }
     }
+
+    if (total > 500000) score -= 120;
 
     return score;
   }
@@ -232,27 +240,39 @@ export class TicketParserService {
 
       const amount = parseInt(chunk.substring(entrySize - 5)) * 100;
       if (amount <= 0) break; // 金額0はデータ終了
+      if (amount > 5000000) break; // 異常値ガード（誤オフセット時の暴走抑制）
 
       let horses;
+      let horseList = [];
       if (entrySize === 8) {
         const h1 = parseInt(chunk.substring(1, 3));
+        horseList = [h1];
         horses = `${h1}`;
       } else if (entrySize === 10) {
         const h1 = parseInt(chunk.substring(1, 3));
         const h2 = parseInt(chunk.substring(3, 5));
+        horseList = [h1];
+        if (h2 > 0) horseList.push(h2);
         horses = h2 > 0 ? `${h1}-${h2}` : `${h1}`;
       } else {
         const h1 = parseInt(chunk.substring(1, 3));
         const h2 = parseInt(chunk.substring(3, 5));
         const h3 = parseInt(chunk.substring(5, 7));
+        horseList = [h1];
         if (h3 > 0) {
+          horseList.push(h2, h3);
           horses = `${h1}-${h2}-${h3}`;
         } else if (h2 > 0) {
+          horseList.push(h2);
           horses = `${h1}-${h2}`;
         } else {
           horses = `${h1}`;
         }
       }
+
+      // 馬番の妥当性チェック（1-18のみ許可）
+      if (horseList.some(h => !Number.isFinite(h) || h < 1 || h > 18)) break;
+      if (!this._isHorseCountValidForBetCode(betCode, horseList.length)) break;
 
       bets.push({
         betType: this.BET_CODE_MAP[betCode],
@@ -475,6 +495,13 @@ export class TicketParserService {
       }
     }
     return horses;
+  }
+
+  static _isHorseCountValidForBetCode(betCode, count) {
+    if (betCode === '1' || betCode === '2') return count === 1;
+    if (betCode === '3' || betCode === '5' || betCode === '6' || betCode === '7') return count >= 1 && count <= 2;
+    if (betCode === '8' || betCode === '9') return count >= 1 && count <= 3;
+    return false;
   }
 
   static _boxCombinations(betCode, n) {
