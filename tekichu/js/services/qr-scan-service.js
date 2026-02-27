@@ -3,6 +3,8 @@
  * jsQR（CDN）を使用
  */
 
+import { TicketParserService } from './ticket-parser-service.js';
+
 export class QRScanService {
   static overlay = null;
   static video = null;
@@ -264,6 +266,17 @@ export class QRScanService {
 
     if (this.scannedCodes.includes(cleaned)) return;
 
+    // 2枚目読取時は、1枚目との組み合わせ妥当性を事前検証して誤混入を防ぐ
+    if (this.scannedCodes.length === 1) {
+      const pairCheck = this._evaluatePair(this.scannedCodes[0], cleaned);
+      if (!pairCheck.ok) {
+        this._debug(`2枚目候補を除外: ${pairCheck.reason} score:${pairCheck.score}`);
+        this.statusEl.textContent = '2つ目のQRが不正の可能性。別角度で同じ馬券のQRを再読取してください（2/2）';
+        return;
+      }
+      this._debug(`2枚目候補OK: order=${pairCheck.order} score=${pairCheck.score}`);
+    }
+
     this.scannedCodes.push(cleaned);
     this.scannedMeta.push(meta || { engine: 'unknown', profile: null });
     this._debug(`QR${this.scannedCodes.length} OK(${meta?.engine || 'unknown'}): ${cleaned.substring(0, 30)}...`);
@@ -299,6 +312,39 @@ export class QRScanService {
     if (this.debugEl) {
       this.debugEl.textContent = line;
     }
+  }
+
+  static _evaluatePair(a, b) {
+    const candidates = [
+      { combined: a + b, order: '1->2' },
+      { combined: b + a, order: '2->1' },
+    ];
+    let best = { ok: false, score: -Infinity, order: null, reason: 'no-candidate' };
+
+    for (const c of candidates) {
+      try {
+        const headerScore = TicketParserService._scoreCombinedDigits
+          ? TicketParserService._scoreCombinedDigits(c.combined)
+          : 0;
+        const parsed = TicketParserService.parse(c.combined);
+        const parseScore = Number.isFinite(parsed.parseScore) ? parsed.parseScore : -1000;
+        const betCount = Array.isArray(parsed.bets) ? parsed.bets.length : 0;
+        const score = headerScore * 10 + parseScore + betCount * 20;
+
+        if (score > best.score) {
+          best = { ok: false, score, order: c.order, reason: 'low-score' };
+        }
+      } catch (e) {
+        // ignore invalid candidate
+      }
+    }
+
+    // しきい値: 妥当な組み合わせなら大抵プラスに乗る
+    if (best.score >= 0) {
+      best.ok = true;
+      best.reason = 'ok';
+    }
+    return best;
   }
 
   // 95桁は満たしていても、連番パターン中心の誤検出を除外する
