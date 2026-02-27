@@ -188,7 +188,7 @@ export class TicketParserService {
   static _parseByTicketType(body, format, ticketType) {
     switch (ticketType) {
       case 0: // 通常
-        return this._parseNormal(body, format);
+        return this._parseNormalBest(body, format, ticketType);
       case 5: // 応援馬券
         return this._parseOuen(body, format);
       case 1: // ボックス
@@ -198,7 +198,7 @@ export class TicketParserService {
       case 3: // フォーメーション
         return this._parseFormation(body, format);
       case 4: // クイックピック
-        return this._parseNormal(body, format);
+        return this._parseNormalBest(body, format, ticketType);
       default:
         console.warn('未対応の券種:', ticketType);
         return [];
@@ -242,7 +242,7 @@ export class TicketParserService {
 
   static _parseOuen(body, format) {
     // まず通常ロジックを試す
-    const primary = this._parseNormal(body, format);
+    const primary = this._parseNormalBest(body, format, 5);
     if (this._isLikelyOuenPair(primary)) {
       return this._normalizeOuenPair(primary);
     }
@@ -283,6 +283,24 @@ export class TicketParserService {
   static _parseNormal(body, format) {
     const entrySize = this._getEntrySize(format);
     return this._parseNormalWithEntrySize(body, entrySize);
+  }
+
+  static _parseNormalBest(body, format, ticketType = 0) {
+    const defaultSize = this._getEntrySize(format);
+    const sizes = Array.from(new Set([defaultSize, 10, 8, 12]));
+    let bestBets = [];
+    let bestScore = -Infinity;
+
+    for (const size of sizes) {
+      const bets = this._parseNormalWithEntrySize(body, size);
+      let score = this._scoreParsedBets(bets, 42, ticketType);
+      if (size !== defaultSize) score -= 10;
+      if (score > bestScore) {
+        bestScore = score;
+        bestBets = bets;
+      }
+    }
+    return bestBets;
   }
 
   static _parseNormalWithEntrySize(body, entrySize) {
