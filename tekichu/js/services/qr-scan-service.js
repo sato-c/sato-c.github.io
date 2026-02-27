@@ -254,6 +254,14 @@ export class QRScanService {
       return;
     }
 
+    if (!this._isLikelyTicketHalf(cleaned)) {
+      const seqRatio = this._sequentialStepRatio(cleaned).toFixed(2);
+      const tailRun = this._tailSequentialRun(cleaned);
+      this._debug(`偽陽性除外: seqRatio=${seqRatio} tailRun=${tailRun} raw:"${cleaned.substring(0, 30)}..."`);
+      this.statusEl.textContent = 'QR検出: データ形式が不自然なため再読取してください';
+      return;
+    }
+
     if (this.scannedCodes.includes(cleaned)) return;
 
     this.scannedCodes.push(cleaned);
@@ -291,5 +299,67 @@ export class QRScanService {
     if (this.debugEl) {
       this.debugEl.textContent = line;
     }
+  }
+
+  // 95桁は満たしていても、連番パターン中心の誤検出を除外する
+  static _isLikelyTicketHalf(digits95) {
+    const seqRatio = this._sequentialStepRatio(digits95);
+    const tailRun = this._tailSequentialRun(digits95);
+    const headRun = this._headSequentialRun(digits95);
+    const leadingZeros = this._leadingCharRun(digits95, '0');
+
+    // 例: 000000040567890123... のような連番偽陽性だけを強めに除外
+    // 正規フォーメーションを巻き込みにくいよう、複数条件の同時成立を要求する
+    if (seqRatio >= 0.62) return false;
+    if (tailRun >= 70) return false;
+    if (leadingZeros >= 5 && headRun >= 18 && seqRatio >= 0.48) return false;
+    return true;
+  }
+
+  // 隣接桁が +1(mod10) でつながる割合
+  static _sequentialStepRatio(digits) {
+    if (!digits || digits.length < 2) return 0;
+    let hit = 0;
+    for (let i = 1; i < digits.length; i++) {
+      const prev = digits.charCodeAt(i - 1) - 48;
+      const curr = digits.charCodeAt(i) - 48;
+      if (((prev + 1) % 10) === curr) hit++;
+    }
+    return hit / (digits.length - 1);
+  }
+
+  // 末尾側の連番ラン長（...67890123 のような伸び）
+  static _tailSequentialRun(digits) {
+    if (!digits || digits.length < 2) return 0;
+    let run = 1;
+    for (let i = digits.length - 1; i > 0; i--) {
+      const prev = digits.charCodeAt(i - 1) - 48;
+      const curr = digits.charCodeAt(i) - 48;
+      if (((prev + 1) % 10) === curr) run++;
+      else break;
+    }
+    return run;
+  }
+
+  // 先頭側の連番ラン長
+  static _headSequentialRun(digits) {
+    if (!digits || digits.length < 2) return 0;
+    let run = 1;
+    for (let i = 1; i < digits.length; i++) {
+      const prev = digits.charCodeAt(i - 1) - 48;
+      const curr = digits.charCodeAt(i) - 48;
+      if (((prev + 1) % 10) === curr) run++;
+      else break;
+    }
+    return run;
+  }
+
+  static _leadingCharRun(str, ch) {
+    let n = 0;
+    for (let i = 0; i < str.length; i++) {
+      if (str[i] !== ch) break;
+      n++;
+    }
+    return n;
   }
 }
