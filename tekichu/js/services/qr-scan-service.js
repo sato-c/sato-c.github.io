@@ -14,6 +14,7 @@ export class QRScanService {
   static scanning = false;
   static scannedCodes = [];
   static scannedMeta = [];
+  static scannedRoles = [];
   static onComplete = null;
   static animFrame = null;
   static statusEl = null;
@@ -37,6 +38,7 @@ export class QRScanService {
     this.onComplete = callback;
     this.scannedCodes = [];
     this.scannedMeta = [];
+    this.scannedRoles = [];
     this.debugHistory = [];
     this.scanning = true;
     this.frameCount = 0;
@@ -268,6 +270,14 @@ export class QRScanService {
 
     // 2枚目読取時は、1枚目との組み合わせ妥当性を事前検証して誤混入を防ぐ
     if (this.scannedCodes.length === 1) {
+      const firstRole = this.scannedRoles[0] || this._guessHalfRole(this.scannedCodes[0]);
+      const secondRole = this._guessHalfRole(cleaned);
+      if (this._isSameSidePair(firstRole, secondRole)) {
+        this._debug(`2枚目候補を除外: same-side first=${firstRole.label} second=${secondRole.label}`);
+        this.statusEl.textContent = '同じ側のQRを読んだ可能性があります。もう片方のQRを読んでください（2/2）';
+        return;
+      }
+
       const pairCheck = this._evaluatePair(this.scannedCodes[0], cleaned);
       if (!pairCheck.ok) {
         this._debug(`2枚目候補を除外: ${pairCheck.reason} score:${pairCheck.score}`);
@@ -279,6 +289,7 @@ export class QRScanService {
 
     this.scannedCodes.push(cleaned);
     this.scannedMeta.push(meta || { engine: 'unknown', profile: null });
+    this.scannedRoles.push(this._guessHalfRole(cleaned));
     this._debug(`QR${this.scannedCodes.length} OK(${meta?.engine || 'unknown'}): ${cleaned.substring(0, 30)}...`);
 
     if (this.scannedCodes.length === 1) {
@@ -361,6 +372,37 @@ export class QRScanService {
       best.reason = 'score-ok';
     }
     return best;
+  }
+
+  static _guessHalfRole(digits95) {
+    const venue = parseInt(digits95.substring(1, 3), 10);
+    const format = parseInt(digits95[0], 10);
+    const ticketType = parseInt(digits95[14], 10);
+    const raceNo = parseInt(digits95.substring(12, 14), 10);
+    const tailRun = this._tailSequentialRun(digits95);
+
+    let frontScore = 0;
+    if (venue >= 1 && venue <= 10) frontScore += 4;
+    if (format >= 1 && format <= 5) frontScore += 2;
+    if (ticketType >= 0 && ticketType <= 5) frontScore += 2;
+    if (raceNo >= 1 && raceNo <= 12) frontScore += 2;
+
+    let backScore = 0;
+    if (tailRun >= 20) backScore += 3;
+    if (tailRun >= 30) backScore += 2;
+    if (!(venue >= 1 && venue <= 10)) backScore += 1;
+
+    let label = 'unknown';
+    if (frontScore >= 7 && frontScore - backScore >= 3) label = 'front';
+    else if (backScore >= 4 && backScore - frontScore >= 2) label = 'back';
+
+    return { label, frontScore, backScore, tailRun };
+  }
+
+  static _isSameSidePair(a, b) {
+    if (!a || !b) return false;
+    if (a.label === 'unknown' || b.label === 'unknown') return false;
+    return a.label === b.label;
   }
 
   // 95桁は満たしていても、連番パターン中心の誤検出を除外する
