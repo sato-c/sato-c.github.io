@@ -16,6 +16,12 @@ export class QRScanService {
   static statusEl = null;
   static debugEl = null;
   static frameCount = 0;
+  static scanProfiles = [
+    { maxDim: 1280, cropRatio: 1.0 },
+    { maxDim: 960, cropRatio: 1.0 },
+    { maxDim: 960, cropRatio: 0.8 },
+    { maxDim: 640, cropRatio: 1.0 },
+  ];
 
   static start(callback) {
     if (typeof jsQR === 'undefined') {
@@ -129,27 +135,18 @@ export class QRScanService {
       const vh = this.video.videoHeight;
 
       if (vw > 0 && vh > 0) {
-        // 縮小してjsQRに渡す（高解像度だと検出失敗しやすい）
-        const scale = Math.min(1, 640 / Math.max(vw, vh));
-        const sw = Math.floor(vw * scale);
-        const sh = Math.floor(vh * scale);
-        this.canvas.width = sw;
-        this.canvas.height = sh;
-        this.ctx.drawImage(this.video, 0, 0, sw, sh);
-
-        const imageData = this.ctx.getImageData(0, 0, sw, sh);
-
         try {
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: 'attemptBoth',
-          });
+          const code = this._detectFromFrame(vw, vh);
 
           // デバッグ: ピクセル値+jsQR結果を1行で
           if (this.frameCount % 60 === 1) {
+            const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
             const d = imageData.data;
+            const sw = imageData.width;
+            const sh = imageData.height;
             const mid = (Math.floor(sh / 2) * sw + Math.floor(sw / 2)) * 4;
-            const black = d[0] === 0 && d[1] === 0 && d[2] === 0
-                       && d[mid] === 0 && d[mid+1] === 0 && d[mid+2] === 0;
+            const black = d[0] === 0 && d[1] === 0 && d[2] === 0 &&
+              d[mid] === 0 && d[mid + 1] === 0 && d[mid + 2] === 0;
             const ret = code === null ? 'null' : code === undefined ? 'undef' : `found:${code.data?.length}ch`;
             this._debug(
               `f:${this.frameCount} ${vw}→${sw}x${sh} black:${black} mid:${d[mid]},${d[mid+1]},${d[mid+2]} jsQR:${ret}`
@@ -167,6 +164,31 @@ export class QRScanService {
     }
 
     this.animFrame = requestAnimationFrame(() => this._scanLoop());
+  }
+
+  static _detectFromFrame(vw, vh) {
+    for (const profile of this.scanProfiles) {
+      const { maxDim, cropRatio } = profile;
+      const scale = Math.min(1, maxDim / Math.max(vw, vh));
+      const srcW = Math.floor(vw * cropRatio);
+      const srcH = Math.floor(vh * cropRatio);
+      const srcX = Math.floor((vw - srcW) / 2);
+      const srcY = Math.floor((vh - srcH) / 2);
+      const dstW = Math.max(1, Math.floor(srcW * scale));
+      const dstH = Math.max(1, Math.floor(srcH * scale));
+
+      this.canvas.width = dstW;
+      this.canvas.height = dstH;
+      this.ctx.imageSmoothingEnabled = false;
+      this.ctx.drawImage(this.video, srcX, srcY, srcW, srcH, 0, 0, dstW, dstH);
+
+      const imageData = this.ctx.getImageData(0, 0, dstW, dstH);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth',
+      });
+      if (code && code.data) return code;
+    }
+    return null;
   }
 
   static _handleCode(data) {
