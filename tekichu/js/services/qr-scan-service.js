@@ -147,7 +147,11 @@ export class QRScanService {
             const mid = (Math.floor(sh / 2) * sw + Math.floor(sw / 2)) * 4;
             const black = d[0] === 0 && d[1] === 0 && d[2] === 0 &&
               d[mid] === 0 && d[mid + 1] === 0 && d[mid + 2] === 0;
-            const ret = code === null ? 'null' : code === undefined ? 'undef' : `found:${code.data?.length}ch`;
+            const dataLen = typeof code?.data === 'string' ? code.data.length : 0;
+            const ret = code === null ? 'null'
+              : code === undefined ? 'undef'
+              : dataLen > 0 ? `found:${dataLen}ch`
+              : 'found-empty';
             this._debug(
               `f:${this.frameCount} ${vw}→${sw}x${sh} black:${black} mid:${d[mid]},${d[mid+1]},${d[mid+2]} jsQR:${ret}`
             );
@@ -186,7 +190,9 @@ export class QRScanService {
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: 'attemptBoth',
       });
-      if (code && code.data) return code;
+      if (code && typeof code.data === 'string' && code.data.length > 0) {
+        return code;
+      }
     }
     return null;
   }
