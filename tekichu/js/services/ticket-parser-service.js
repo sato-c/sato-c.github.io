@@ -45,23 +45,51 @@ export class TicketParserService {
       throw new Error(`QR桁数不正: ${a.length}桁, ${b.length}桁（各95桁必要）`);
     }
 
-    // a+bの順で開催場コードが有効か確認
-    const venueAB = a.substring(1, 3);
-    const venueNum = parseInt(venueAB);
-    if (venueNum >= 1 && venueNum <= 10) {
-      return a + b;
-    }
-    // 逆順を試す
-    const venueBA = b.substring(1, 3);
-    const venueNum2 = parseInt(venueBA);
-    if (venueNum2 >= 1 && venueNum2 <= 10) {
-      return b + a;
-    }
+    const ab = a + b;
+    const ba = b + a;
+
+    // 結合後190桁のヘッダー整合性で順序を判定
+    const scoreAB = this._scoreCombinedDigits(ab);
+    const scoreBA = this._scoreCombinedDigits(ba);
+    if (scoreAB > scoreBA) return ab;
+    if (scoreBA > scoreAB) return ba;
 
     // どちらも判別できない場合、フィラーが少ない方を前とする
     const fillerA = this._countTrailingFiller(a);
     const fillerB = this._countTrailingFiller(b);
     return fillerA <= fillerB ? a + b : b + a;
+  }
+
+  /**
+   * 結合済み190桁の妥当性をスコア化して順序判定に使う
+   */
+  static _scoreCombinedDigits(digits190) {
+    if (!digits190 || digits190.length !== 190) return -1;
+
+    let score = 0;
+
+    const format = parseInt(digits190[0], 10);
+    if (format >= 1 && format <= 5) score += 3;
+
+    const venueNum = parseInt(digits190.substring(1, 3), 10);
+    if (venueNum >= 1 && venueNum <= 10) score += 4;
+
+    const kai = parseInt(digits190.substring(8, 10), 10);
+    if (kai >= 1 && kai <= 12) score += 1;
+
+    const nichi = parseInt(digits190.substring(10, 12), 10);
+    if (nichi >= 1 && nichi <= 12) score += 1;
+
+    const raceNumber = parseInt(digits190.substring(12, 14), 10);
+    if (raceNumber >= 1 && raceNumber <= 12) score += 2;
+
+    const ticketType = parseInt(digits190[14], 10);
+    if (ticketType >= 0 && ticketType <= 5) score += 3;
+
+    const firstBetCode = digits190[42];
+    if (this.BET_CODE_MAP[firstBetCode]) score += 2;
+
+    return score;
   }
 
   /**
