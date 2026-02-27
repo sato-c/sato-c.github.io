@@ -16,6 +16,8 @@ export class QRScanService {
   static statusEl = null;
   static debugEl = null;
   static frameCount = 0;
+  static scanBusy = false;
+  static barcodeDetector = null;
   static scanProfiles = [
     { maxDim: 1280, cropRatio: 1.0 },
     { maxDim: 960, cropRatio: 1.0 },
@@ -32,6 +34,7 @@ export class QRScanService {
     this.scannedCodes = [];
     this.scanning = true;
     this.frameCount = 0;
+    this.scanBusy = false;
     this._createUI();
     this._startCamera();
   }
@@ -115,6 +118,7 @@ export class QRScanService {
         this.video.onloadedmetadata = () => resolve();
       });
       await this.video.play();
+      await this._initNativeDetector();
 
       this._debug(`camera ready ${this.video.videoWidth}x${this.video.videoHeight}`);
       setTimeout(() => this._scanLoop(), 500);
@@ -125,21 +129,26 @@ export class QRScanService {
     }
   }
 
-  static _scanLoop() {
+  static async _scanLoop() {
     if (!this.scanning) return;
+    if (this.scanBusy) {
+      this.animFrame = requestAnimationFrame(() => this._scanLoop());
+      return;
+    }
+    this.scanBusy = true;
 
     this.frameCount++;
 
-    if (this.video.readyState >= this.video.HAVE_CURRENT_DATA) {
-      const vw = this.video.videoWidth;
-      const vh = this.video.videoHeight;
+    try {
+      if (this.video.readyState >= this.video.HAVE_CURRENT_DATA) {
+        const vw = this.video.videoWidth;
+        const vh = this.video.videoHeight;
 
-      if (vw > 0 && vh > 0) {
-        try {
-          const code = this._detectFromFrame(vw, vh);
+        if (vw > 0 && vh > 0) {
+          const decoded = await this._detectFromFrame(vw, vh);
 
-          // デバッグ: ピクセル値+jsQR結果を1行で
-          if (this.frameCount % 60 === 1) {
+          // デバッグ: ピクセル値+検出結果を1行で
+          if (this.frameCount % 60 === 1 && this.canvas.width > 0 && this.canvas.height > 0) {
             const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
             const d = imageData.data;
             const sw = imageData.width;
@@ -147,30 +156,29 @@ export class QRScanService {
             const mid = (Math.floor(sh / 2) * sw + Math.floor(sw / 2)) * 4;
             const black = d[0] === 0 && d[1] === 0 && d[2] === 0 &&
               d[mid] === 0 && d[mid + 1] === 0 && d[mid + 2] === 0;
-            const dataLen = typeof code?.data === 'string' ? code.data.length : 0;
-            const ret = code === null ? 'null'
-              : code === undefined ? 'undef'
-              : dataLen > 0 ? `found:${dataLen}ch`
-              : 'found-empty';
+            const dataLen = typeof decoded === 'string' ? decoded.length : 0;
+            const ret = decoded ? `found:${dataLen}ch` : 'null';
             this._debug(
-              `f:${this.frameCount} ${vw}→${sw}x${sh} black:${black} mid:${d[mid]},${d[mid+1]},${d[mid+2]} jsQR:${ret}`
+              `f:${this.frameCount} ${vw}→${sw}x${sh} black:${black} mid:${d[mid]},${d[mid+1]},${d[mid+2]} qr:${ret}`
             );
           }
 
-          if (code && code.data) {
-            this._debug(`検出! "${code.data.substring(0, 50)}..." (${code.data.length}文字)`);
-            this._handleCode(code.data);
+          if (decoded) {
+            this._debug(`検出! "${decoded.substring(0, 50)}..." (${decoded.length}文字)`);
+            this._handleCode(decoded);
           }
-        } catch (e) {
-          this._debug('jsQRエラー: ' + e.message);
         }
       }
+    } catch (e) {
+      this._debug('QR検出エラー: ' + e.message);
+    } finally {
+      this.scanBusy = false;
     }
 
     this.animFrame = requestAnimationFrame(() => this._scanLoop());
   }
 
-  static _detectFromFrame(vw, vh) {
+  static async _detectFromFrame(vw, vh) {
     for (const profile of this.scanProfiles) {
       const { maxDim, cropRatio } = profile;
       const scale = Math.min(1, maxDim / Math.max(vw, vh));
@@ -186,12 +194,45 @@ export class QRScanService {
       this.ctx.imageSmoothingEnabled = false;
       this.ctx.drawImage(this.video, srcX, srcY, srcW, srcH, 0, 0, dstW, dstH);
 
+      const nativeDecoded = await this._detectWithNative(this.canvas);
+      if (nativeDecoded) return nativeDecoded;
+
       const imageData = this.ctx.getImageData(0, 0, dstW, dstH);
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: 'attemptBoth',
       });
       if (code && typeof code.data === 'string' && code.data.length > 0) {
-        return code;
+        return code.data;
+      }
+    }
+    return null;
+  }
+
+  static async _initNativeDetector() {
+    this.barcodeDetector = null;
+    if (!('BarcodeDetector' in window)) return;
+    try {
+      const formats = await window.BarcodeDetector.getSupportedFormats();
+      if (!formats.includes('qr_code')) return;
+      this.barcodeDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      this._debug('native QR detector: enabled');
+    } catch (e) {
+      this._debug('native QR detector unavailable: ' + e.message);
+    }
+  }
+
+  static async _detectWithNative(source) {
+    if (!this.barcodeDetector) return null;
+    try {
+      const barcodes = await this.barcodeDetector.detect(source);
+      if (!barcodes || barcodes.length === 0) return null;
+      const value = barcodes[0]?.rawValue;
+      if (typeof value === 'string' && value.length > 0) {
+        return value;
+      }
+    } catch (e) {
+      if (this.frameCount % 120 === 1) {
+        this._debug('native detect error: ' + e.message);
       }
     }
     return null;
