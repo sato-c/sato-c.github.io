@@ -141,11 +141,11 @@ export class TicketParserService {
     };
 
     // 本文開始位置に揺れがあるケースに備え、複数オフセットを試して最善を採用
-    // 既定は43桁目(0-index 42)
-    const bodyOffsets = [42, 41, 43];
+    // 1st pass: 既定近傍のみ（誤検出抑制）
+    const primaryOffsets = [42, 41, 43];
     let best = { bets: [], score: -Infinity, bodyOffset: 42 };
 
-    for (const bodyOffset of bodyOffsets) {
+    for (const bodyOffset of primaryOffsets) {
       const body = digits190.substring(bodyOffset);
       try {
         const bets = this._parseByTicketType(body, format, ticketType);
@@ -155,6 +155,23 @@ export class TicketParserService {
         }
       } catch (e) {
         // ignore candidate
+      }
+    }
+
+    // 2nd pass: 全滅時のみ探索範囲を拡張（単勝1点などの取りこぼし救済）
+    if (best.score <= -1000) {
+      for (let bodyOffset = 36; bodyOffset <= 50; bodyOffset++) {
+        if (primaryOffsets.includes(bodyOffset)) continue;
+        const body = digits190.substring(bodyOffset);
+        try {
+          const bets = this._parseByTicketType(body, format, ticketType);
+          const score = this._scoreParsedBets(bets, bodyOffset, ticketType);
+          if (score > best.score) {
+            best = { bets, score, bodyOffset };
+          }
+        } catch (e) {
+          // ignore candidate
+        }
       }
     }
 
