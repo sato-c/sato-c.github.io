@@ -149,7 +149,7 @@ export class TicketParserService {
       const body = digits190.substring(bodyOffset);
       try {
         const bets = this._parseByTicketType(body, format, ticketType);
-        const score = this._scoreParsedBets(bets, bodyOffset);
+        const score = this._scoreParsedBets(bets, bodyOffset, ticketType);
         if (score > best.score) {
           best = { bets, score, bodyOffset };
         }
@@ -171,8 +171,9 @@ export class TicketParserService {
   static _parseByTicketType(body, format, ticketType) {
     switch (ticketType) {
       case 0: // 通常
-      case 5: // 応援馬券
         return this._parseNormal(body, format);
+      case 5: // 応援馬券
+        return this._parseOuen(body, format);
       case 1: // ボックス
         return this._parseBox(body, format);
       case 2: // ながし
@@ -187,7 +188,7 @@ export class TicketParserService {
     }
   }
 
-  static _scoreParsedBets(bets, bodyOffset) {
+  static _scoreParsedBets(bets, bodyOffset, ticketType = null) {
     if (!Array.isArray(bets) || bets.length === 0) return -1000 - Math.abs(42 - bodyOffset);
 
     let score = bets.length * 20;
@@ -215,8 +216,44 @@ export class TicketParserService {
     }
 
     if (total > 500000) score -= 120;
+    if (ticketType === 5) {
+      score += this._isLikelyOuenPair(bets) ? 120 : -120;
+    }
 
     return score;
+  }
+
+  static _parseOuen(body, format) {
+    // まず通常ロジックを試す
+    const primary = this._parseNormal(body, format);
+    if (this._isLikelyOuenPair(primary)) {
+      return this._normalizeOuenPair(primary);
+    }
+
+    // 応援馬券は券面上「単勝+複勝」固定のため、エントリ長違いでも救済を試す
+    const entrySizes = Array.from(new Set([this._getEntrySize(format), 8, 10, 12]));
+    let best = primary;
+    for (const size of entrySizes) {
+      const parsed = this._parseNormalWithEntrySize(body, size);
+      if (this._isLikelyOuenPair(parsed)) {
+        return this._normalizeOuenPair(parsed);
+      }
+      if (parsed.length > best.length) best = parsed;
+    }
+
+    // 単勝+複勝が取れなかった場合でも、より妥当な先頭2件に寄せる
+    if (best.length >= 2) {
+      const tansho = best.find(b => b.betType === '単勝');
+      const fukusho = best.find(b => b.betType === '複勝');
+      if (tansho && fukusho && tansho.horses === fukusho.horses) {
+        const amount = Math.min(tansho.amount, fukusho.amount);
+        return [
+          { ...tansho, amount },
+          { ...fukusho, amount },
+        ];
+      }
+    }
+    return best;
   }
 
   /**
@@ -228,6 +265,10 @@ export class TicketParserService {
    */
   static _parseNormal(body, format) {
     const entrySize = this._getEntrySize(format);
+    return this._parseNormalWithEntrySize(body, entrySize);
+  }
+
+  static _parseNormalWithEntrySize(body, entrySize) {
     const bets = [];
     let pos = 0;
 
@@ -284,6 +325,28 @@ export class TicketParserService {
     }
 
     return bets;
+  }
+
+  static _isLikelyOuenPair(bets) {
+    if (!Array.isArray(bets) || bets.length < 2) return false;
+    const tansho = bets.find(b => b.betType === '単勝');
+    const fukusho = bets.find(b => b.betType === '複勝');
+    if (!tansho || !fukusho) return false;
+    if (!tansho.horses || tansho.horses !== fukusho.horses) return false;
+    if (!Number.isFinite(tansho.amount) || !Number.isFinite(fukusho.amount)) return false;
+    if (tansho.amount <= 0 || fukusho.amount <= 0) return false;
+    return true;
+  }
+
+  static _normalizeOuenPair(bets) {
+    const tansho = bets.find(b => b.betType === '単勝');
+    const fukusho = bets.find(b => b.betType === '複勝');
+    if (!tansho || !fukusho) return bets;
+    const amount = Math.min(tansho.amount, fukusho.amount);
+    return [
+      { ...tansho, amount },
+      { ...fukusho, amount },
+    ];
   }
 
   /**
