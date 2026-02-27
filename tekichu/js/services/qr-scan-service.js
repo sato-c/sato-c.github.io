@@ -16,6 +16,7 @@ export class QRScanService {
   static animFrame = null;
   static statusEl = null;
   static debugEl = null;
+  static debugHistory = [];
   static frameCount = 0;
   static scanBusy = false;
   static barcodeDetector = null;
@@ -34,6 +35,7 @@ export class QRScanService {
     this.onComplete = callback;
     this.scannedCodes = [];
     this.scannedMeta = [];
+    this.debugHistory = [];
     this.scanning = true;
     this.frameCount = 0;
     this.scanBusy = false;
@@ -270,18 +272,24 @@ export class QRScanService {
       const cb = this.onComplete;
       const codes = [...this.scannedCodes];
       const metaList = [...this.scannedMeta];
+      const history = [...this.debugHistory];
       setTimeout(() => {
         this.stop();
-        if (cb) cb(codes[0], codes[1], { sources: metaList });
+        if (cb) cb(codes[0], codes[1], { sources: metaList, history });
       }, 500);
     }
   }
 
   static _debug(msg) {
     console.log('[QR]', msg);
+    const time = new Date().toLocaleTimeString('ja', { hour12: false });
+    const line = `${time} ${msg}`;
+    this.debugHistory.push(line);
+    if (this.debugHistory.length > 200) {
+      this.debugHistory.shift();
+    }
     if (this.debugEl) {
-      const time = new Date().toLocaleTimeString('ja', { hour12: false });
-      this.debugEl.textContent = `${time} ${msg}`;
+      this.debugEl.textContent = line;
     }
   }
 }

@@ -14,6 +14,7 @@ export class InputView {
   static element = null;
   static editingId = null;
   static qrResult = null;
+  static qrScanReport = null;
 
   static init(container) {
     this.container = container;
@@ -26,6 +27,7 @@ export class InputView {
   static show() {
     this.editingId = null;
     this.qrResult = null;
+    this.qrScanReport = null;
     this.render();
     this.element.style.display = '';
   }
@@ -37,6 +39,7 @@ export class InputView {
   static editRecord(record) {
     this.editingId = record.id;
     this.qrResult = null;
+    this.qrScanReport = null;
     this.render();
     this.element.style.display = '';
     this.fillForm(record);
@@ -61,6 +64,10 @@ export class InputView {
       qrBtn.textContent = '📷 馬券QR読取';
       qrBtn.addEventListener('click', () => this.startQRScan());
       form.appendChild(qrBtn);
+
+      if (this.qrScanReport) {
+        form.appendChild(this._createQRScanReportBox());
+      }
     }
 
     // QR結果プレビュー
@@ -145,6 +152,13 @@ export class InputView {
       const best = this._parseBestOrder(code1, code2);
       const { result, order } = best;
       this.qrResult = result;
+      this.qrScanReport = {
+        order,
+        bodyOffset: result.bodyOffset,
+        parseScore: result.parseScore,
+        sources: scanMeta?.sources || [],
+        history: scanMeta?.history || [],
+      };
       if (scanMeta?.sources?.length) {
         const engines = scanMeta.sources.map(s => s?.engine || 'unknown').join(' + ');
         console.log('[QR] sources:', engines, 'order:', order);
@@ -165,6 +179,51 @@ export class InputView {
       console.error('QR解析エラー:', e);
       NotificationManager.error('QRコードの解析に失敗しました: ' + e.message);
     }
+  }
+
+  static _createQRScanReportBox() {
+    const wrap = document.createElement('div');
+    wrap.className = 'qr-preview';
+    wrap.style.marginTop = '10px';
+
+    const title = document.createElement('div');
+    title.className = 'qr-preview__title';
+    title.textContent = '最終スキャンログ';
+    wrap.appendChild(title);
+
+    const info = document.createElement('div');
+    info.className = 'qr-preview__item';
+    const engines = this.qrScanReport.sources.length > 0
+      ? this.qrScanReport.sources.map(s => s?.engine || 'unknown').join(' + ')
+      : 'unknown';
+    info.textContent =
+      `engine:${engines} order:${this.qrScanReport.order} offset:${this.qrScanReport.bodyOffset} score:${this.qrScanReport.parseScore}`;
+    wrap.appendChild(info);
+
+    const pre = document.createElement('pre');
+    pre.style.cssText =
+      'margin-top:8px;padding:8px;border-radius:8px;background:#111;color:#8f8;font-size:11px;' +
+      'line-height:1.35;max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-all;';
+    const lines = this.qrScanReport.history.length > 0
+      ? this.qrScanReport.history.slice(-24)
+      : ['(no debug history)'];
+    pre.textContent = lines.join('\n');
+    wrap.appendChild(pre);
+
+    const actions = document.createElement('div');
+    actions.className = 'qr-preview__actions';
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'btn btn--secondary';
+    clearBtn.textContent = 'ログクリア';
+    clearBtn.addEventListener('click', () => {
+      this.qrScanReport = null;
+      this.render();
+    });
+    actions.appendChild(clearBtn);
+
+    wrap.appendChild(actions);
+    return wrap;
   }
 
   static _parseBestOrder(code1, code2) {
