@@ -313,11 +313,34 @@ export class QRScanService {
     const cb = this.onComplete;
     const code1 = this.firstHalf.code;
     const code2 = this.secondHalf.code;
+    const orderDecision = this._resolveOrderFromRoles(firstRole, secondRole);
+    const combined190 = orderDecision.order === '2->1' ? code2 + code1 : code1 + code2;
+
+    this._debug(`final order:${orderDecision.order} reason:${orderDecision.reason}`);
 
     setTimeout(() => {
       this.stop('completed');
-      if (cb) cb(code1, code2, { sources, roles, history });
+      if (cb) {
+        cb(combined190, {
+          order: orderDecision.order,
+          orderReason: orderDecision.reason,
+          sources,
+          roles,
+          history,
+          parts: { code1, code2 },
+        });
+      }
     }, 380);
+  }
+
+  static _resolveOrderFromRoles(role1, role2) {
+    if (role1 === 'front' && role2 === 'back') return { order: '1->2', reason: 'front-back' };
+    if (role1 === 'back' && role2 === 'front') return { order: '2->1', reason: 'back-front' };
+    if (role1 === 'front') return { order: '1->2', reason: 'first-front' };
+    if (role2 === 'front') return { order: '2->1', reason: 'second-front' };
+    if (role1 === 'back') return { order: '2->1', reason: 'first-back' };
+    if (role2 === 'back') return { order: '1->2', reason: 'second-back' };
+    return { order: '1->2', reason: 'fallback-default' };
   }
 
   static _classifyHalf(digits95) {

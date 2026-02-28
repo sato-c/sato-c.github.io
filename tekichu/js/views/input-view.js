@@ -138,8 +138,8 @@ export class InputView {
   static startQRScan() {
     try {
       QRScanService.start(
-        (code1, code2, scanMeta) => {
-          this._handleQRResult(code1, code2, scanMeta);
+        (combined190, scanMeta) => {
+          this._handleQRResult(combined190, scanMeta);
         },
         {
           onStop: (report) => this._handleQRStop(report),
@@ -168,10 +168,10 @@ export class InputView {
     this.render();
   }
 
-  static _handleQRResult(code1, code2, scanMeta = null) {
+  static _handleQRResult(combined190, scanMeta = null) {
     try {
-      const best = this._parseBestOrder(code1, code2);
-      const { result, order } = best;
+      const result = TicketParserService.parse(combined190);
+      const order = scanMeta?.order || 'n/a';
       this.qrResult = result;
       this.qrScanReport = {
         order,
@@ -179,6 +179,9 @@ export class InputView {
         parseScore: result.parseScore,
         sources: scanMeta?.sources || [],
         history: scanMeta?.history || [],
+        orderReason: scanMeta?.orderReason || null,
+        firstRole: scanMeta?.roles?.[0]?.label || null,
+        secondRole: scanMeta?.roles?.[1]?.label || null,
       };
       if (scanMeta?.sources?.length) {
         const engines = scanMeta.sources.map(s => s?.engine || 'unknown').join(' + ');
