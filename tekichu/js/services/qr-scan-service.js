@@ -1,9 +1,12 @@
 /**
- * QRScanService - カメラでQRコードを読み取る
- * jsQR（CDN）を使用
+ * QRScanService - カメラでJRA馬券のQR(95桁x2)を読む
+ *
+ * 設計方針:
+ * - まず95桁かどうかを判定
+ * - 95桁を「前半(ヘッダーあり) / 後半(フィラー寄り) / 不明」に分類
+ * - 同じ側(front+front, back+back)は2枚目として受け付けない
+ * - 2枚揃ったらそのままコールバックへ渡す（順序最終判定は上位で実施）
  */
-
-import { TicketParserService } from './ticket-parser-service.js';
 
 export class QRScanService {
   static overlay = null;
@@ -12,17 +15,19 @@ export class QRScanService {
   static ctx = null;
   static stream = null;
   static scanning = false;
-  static scannedCodes = [];
-  static scannedMeta = [];
-  static scannedRoles = [];
   static onComplete = null;
   static animFrame = null;
   static statusEl = null;
   static debugEl = null;
-  static debugHistory = [];
+
   static frameCount = 0;
   static scanBusy = false;
   static barcodeDetector = null;
+  static debugHistory = [];
+
+  static firstHalf = null;  // { code, role, meta }
+  static secondHalf = null; // { code, role, meta }
+
   static scanProfiles = [
     { maxDim: 1280, cropRatio: 1.0 },
     { maxDim: 960, cropRatio: 1.0 },
@@ -36,13 +41,13 @@ export class QRScanService {
     }
 
     this.onComplete = callback;
-    this.scannedCodes = [];
-    this.scannedMeta = [];
-    this.scannedRoles = [];
     this.debugHistory = [];
+    this.firstHalf = null;
+    this.secondHalf = null;
     this.scanning = true;
     this.frameCount = 0;
     this.scanBusy = false;
+
     this._createUI();
     this._startCamera();
   }
@@ -100,7 +105,7 @@ export class QRScanService {
 
     this.statusEl = document.createElement('div');
     this.statusEl.className = 'qr-scanner-status';
-    this.statusEl.textContent = '馬券のQRコードにカメラを向けてください（1/2）';
+    this.statusEl.textContent = '馬券のQRコードを読んでください（1/2）';
     this.overlay.appendChild(this.statusEl);
 
     this.debugEl = document.createElement('div');
@@ -118,7 +123,7 @@ export class QRScanService {
     try {
       this._debug('カメラ起動中...');
       this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       this.video.srcObject = this.stream;
 
@@ -129,9 +134,8 @@ export class QRScanService {
       await this._initNativeDetector();
 
       this._debug(`camera ready ${this.video.videoWidth}x${this.video.videoHeight}`);
-      setTimeout(() => this._scanLoop(), 500);
+      setTimeout(() => this._scanLoop(), 400);
     } catch (e) {
-      console.error('カメラ起動失敗:', e);
       this._debug('カメラエラー: ' + e.message);
       this.statusEl.textContent = 'カメラを起動できません: ' + e.message;
     }
@@ -144,37 +148,28 @@ export class QRScanService {
       return;
     }
     this.scanBusy = true;
-
     this.frameCount++;
 
     try {
       if (this.video.readyState >= this.video.HAVE_CURRENT_DATA) {
         const vw = this.video.videoWidth;
         const vh = this.video.videoHeight;
-
         if (vw > 0 && vh > 0) {
           const found = await this._detectFromFrame(vw, vh);
 
-          // デバッグ: ピクセル値+検出結果を1行で
           if (this.frameCount % 60 === 1 && this.canvas.width > 0 && this.canvas.height > 0) {
             const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-            const d = imageData.data;
             const sw = imageData.width;
             const sh = imageData.height;
-            const mid = (Math.floor(sh / 2) * sw + Math.floor(sw / 2)) * 4;
-            const black = d[0] === 0 && d[1] === 0 && d[2] === 0 &&
-              d[mid] === 0 && d[mid + 1] === 0 && d[mid + 2] === 0;
             const dataLen = typeof found?.text === 'string' ? found.text.length : 0;
             const ret = found ? `found:${dataLen}ch(${found.engine})` : 'null';
-            this._debug(
-              `f:${this.frameCount} ${vw}→${sw}x${sh} black:${black} mid:${d[mid]},${d[mid+1]},${d[mid+2]} qr:${ret}`
-            );
+            this._debug(`f:${this.frameCount} ${vw}→${sw}x${sh} qr:${ret}`);
           }
 
           if (found?.text) {
             const profileLabel = `${found.profile.maxDim}/${found.profile.cropRatio}`;
-            this._debug(`検出(${found.engine}, ${profileLabel}) "${found.text.substring(0, 50)}..." (${found.text.length}文字)`);
-            this._handleCode(found.text, found);
+            this._debug(`検出(${found.engine}, ${profileLabel}) "${found.text.substring(0, 45)}..."`);
+            this._acceptDetection(found.text, found);
           }
         }
       }
@@ -204,9 +199,7 @@ export class QRScanService {
       this.ctx.drawImage(this.video, srcX, srcY, srcW, srcH, 0, 0, dstW, dstH);
 
       const nativeDecoded = await this._detectWithNative(this.canvas);
-      if (nativeDecoded) {
-        return { text: nativeDecoded, engine: 'native', profile };
-      }
+      if (nativeDecoded) return { text: nativeDecoded, engine: 'native', profile };
 
       const imageData = this.ctx.getImageData(0, 0, dstW, dstH);
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
@@ -238,189 +231,96 @@ export class QRScanService {
       const barcodes = await this.barcodeDetector.detect(source);
       if (!barcodes || barcodes.length === 0) return null;
       const value = barcodes[0]?.rawValue;
-      if (typeof value === 'string' && value.length > 0) {
-        return value;
-      }
+      if (typeof value === 'string' && value.length > 0) return value;
     } catch (e) {
-      if (this.frameCount % 120 === 1) {
-        this._debug('native detect error: ' + e.message);
-      }
+      if (this.frameCount % 120 === 1) this._debug('native detect error: ' + e.message);
     }
     return null;
   }
 
-  static _handleCode(data, meta = null) {
-    const cleaned = data.replace(/\D/g, '');
+  static _acceptDetection(rawText, meta) {
+    const cleaned = rawText.replace(/\D/g, '');
+    if (cleaned.length !== 95) return;
 
-    if (cleaned.length !== 95) {
-      this._debug(`桁数: ${cleaned.length} (95必要) raw:"${data.substring(0, 60)}"`);
-      this.statusEl.textContent = `QR検出: ${cleaned.length}桁 (95桁必要)`;
+    if (this.firstHalf?.code === cleaned || this.secondHalf?.code === cleaned) return;
+    if (this._looksLikeNoise(cleaned)) {
+      this._debug('除外: 連番ノイズ疑い');
       return;
     }
 
-    if (!this._isLikelyTicketHalf(cleaned)) {
-      const seqRatio = this._sequentialStepRatio(cleaned).toFixed(2);
-      const tailRun = this._tailSequentialRun(cleaned);
-      this._debug(`偽陽性除外: seqRatio=${seqRatio} tailRun=${tailRun} raw:"${cleaned.substring(0, 30)}..."`);
-      this.statusEl.textContent = 'QR検出: データ形式が不自然なため再読取してください';
-      return;
-    }
+    const role = this._classifyHalf(cleaned);
+    this._debug(`候補 role=${role.label} hdr=${role.headerScore} tail=${role.tailSeqRun}`);
 
-    if (this.scannedCodes.includes(cleaned)) return;
-
-    // 2枚目読取時は、1枚目との組み合わせ妥当性を事前検証して誤混入を防ぐ
-    if (this.scannedCodes.length === 1) {
-      const firstRole = this.scannedRoles[0] || this._guessHalfRole(this.scannedCodes[0]);
-      const secondRole = this._guessHalfRole(cleaned);
-      if (this._isSameSidePair(firstRole, secondRole)) {
-        this._debug(`2枚目候補を除外: same-side first=${firstRole.label} second=${secondRole.label}`);
-        this.statusEl.textContent = '同じ側のQRを読んだ可能性があります。もう片方のQRを読んでください（2/2）';
-        return;
-      }
-
-      const pairCheck = this._evaluatePair(this.scannedCodes[0], cleaned);
-      if (!pairCheck.ok) {
-        this._debug(`2枚目候補を除外: ${pairCheck.reason} score:${pairCheck.score}`);
-        this.statusEl.textContent = '2つ目のQRが不正の可能性。別角度で同じ馬券のQRを再読取してください（2/2）';
-        return;
-      }
-      this._debug(`2枚目候補OK: order=${pairCheck.order} score=${pairCheck.score}`);
-    }
-
-    this.scannedCodes.push(cleaned);
-    this.scannedMeta.push(meta || { engine: 'unknown', profile: null });
-    this.scannedRoles.push(this._guessHalfRole(cleaned));
-    this._debug(`QR${this.scannedCodes.length} OK(${meta?.engine || 'unknown'}): ${cleaned.substring(0, 30)}...`);
-
-    if (this.scannedCodes.length === 1) {
-      this.statusEl.textContent = '1つ目読取OK！もう1つのQRに向けてください（2/2）';
-      this.statusEl.classList.add('qr-scanner-status--ok');
+    if (!this.firstHalf) {
+      this.firstHalf = { code: cleaned, role, meta };
+      this.statusEl.textContent = `1つ目読取OK（${role.label}）。もう片方を読んでください（2/2）`;
       this.overlay.classList.add('qr-scanner-overlay--flash');
-      setTimeout(() => this.overlay.classList.remove('qr-scanner-overlay--flash'), 200);
+      setTimeout(() => this.overlay?.classList.remove('qr-scanner-overlay--flash'), 160);
+      return;
     }
 
-    if (this.scannedCodes.length >= 2) {
-      this.statusEl.textContent = '読取完了！';
-      const cb = this.onComplete;
-      const codes = [...this.scannedCodes];
-      const metaList = [...this.scannedMeta];
-      const history = [...this.debugHistory];
-      setTimeout(() => {
-        this.stop();
-        if (cb) cb(codes[0], codes[1], { sources: metaList, history });
-      }, 500);
+    const firstRole = this.firstHalf.role.label;
+    const secondRole = role.label;
+
+    if (firstRole !== 'unknown' && secondRole !== 'unknown' && firstRole === secondRole) {
+      this._debug(`除外: 同じ側 ${firstRole}+${secondRole}`);
+      this.statusEl.textContent = '同じ側のQRです。もう片方のQRを読んでください（2/2）';
+      return;
     }
+
+    this.secondHalf = { code: cleaned, role, meta };
+    this._debug(`確定: role1=${firstRole} role2=${secondRole}`);
+    this.statusEl.textContent = '読取完了！';
+
+    const sources = [this.firstHalf.meta, this.secondHalf.meta];
+    const roles = [this.firstHalf.role, this.secondHalf.role];
+    const history = [...this.debugHistory];
+    const cb = this.onComplete;
+    const code1 = this.firstHalf.code;
+    const code2 = this.secondHalf.code;
+
+    setTimeout(() => {
+      this.stop();
+      if (cb) cb(code1, code2, { sources, roles, history });
+    }, 380);
   }
 
-  static _debug(msg) {
-    console.log('[QR]', msg);
-    const time = new Date().toLocaleTimeString('ja', { hour12: false });
-    const line = `${time} ${msg}`;
-    this.debugHistory.push(line);
-    if (this.debugHistory.length > 200) {
-      this.debugHistory.shift();
-    }
-    if (this.debugEl) {
-      this.debugEl.textContent = line;
-    }
-  }
-
-  static _evaluatePair(a, b) {
-    const candidates = [
-      { combined: a + b, order: '1->2' },
-      { combined: b + a, order: '2->1' },
-    ];
-    let best = {
-      ok: false,
-      score: -Infinity,
-      order: null,
-      reason: 'no-candidate',
-      headerScore: -Infinity,
-      parseScore: -Infinity,
-      betCount: 0,
-    };
-
-    for (const c of candidates) {
-      try {
-        const headerScore = TicketParserService._scoreCombinedDigits
-          ? TicketParserService._scoreCombinedDigits(c.combined)
-          : 0;
-        const parsed = TicketParserService.parse(c.combined);
-        const parseScore = Number.isFinite(parsed.parseScore) ? parsed.parseScore : -1000;
-        const betCount = Array.isArray(parsed.bets) ? parsed.bets.length : 0;
-        const score = headerScore * 20 + parseScore + betCount * 30;
-
-        if (score > best.score) {
-          best = { ok: false, score, order: c.order, reason: 'low-score', headerScore, parseScore, betCount };
-        }
-      } catch (e) {
-        // ignore invalid candidate
-      }
-    }
-
-    // 厳しすぎるブロックを避ける:
-    // ヘッダーが十分妥当なら許可（単勝など取りこぼし対策）
-    if (best.headerScore >= 10) {
-      best.ok = true;
-      best.reason = 'header-ok';
-      return best;
-    }
-
-    // ヘッダーが弱い場合のみ、解析スコアで判定
-    if (best.parseScore >= -150 || best.betCount > 0 || best.score >= -50) {
-      best.ok = true;
-      best.reason = 'score-ok';
-    }
-    return best;
-  }
-
-  static _guessHalfRole(digits95) {
-    const venue = parseInt(digits95.substring(1, 3), 10);
+  static _classifyHalf(digits95) {
     const format = parseInt(digits95[0], 10);
+    const venue = parseInt(digits95.substring(1, 3), 10);
+    const year = parseInt(digits95.substring(6, 8), 10);
+    const kai = parseInt(digits95.substring(8, 10), 10);
+    const nichi = parseInt(digits95.substring(10, 12), 10);
+    const race = parseInt(digits95.substring(12, 14), 10);
     const ticketType = parseInt(digits95[14], 10);
-    const raceNo = parseInt(digits95.substring(12, 14), 10);
-    const tailRun = this._tailSequentialRun(digits95);
+    const tailSeqRun = this._tailSequentialRun(digits95);
 
-    let frontScore = 0;
-    if (venue >= 1 && venue <= 10) frontScore += 4;
-    if (format >= 1 && format <= 5) frontScore += 2;
-    if (ticketType >= 0 && ticketType <= 5) frontScore += 2;
-    if (raceNo >= 1 && raceNo <= 12) frontScore += 2;
-
-    let backScore = 0;
-    if (tailRun >= 20) backScore += 3;
-    if (tailRun >= 30) backScore += 2;
-    if (!(venue >= 1 && venue <= 10)) backScore += 1;
+    let headerScore = 0;
+    if (format >= 1 && format <= 5) headerScore += 2;
+    if (venue >= 1 && venue <= 10) headerScore += 4;
+    if (year >= 0 && year <= 99) headerScore += 1;
+    if (kai >= 1 && kai <= 12) headerScore += 1;
+    if (nichi >= 1 && nichi <= 12) headerScore += 1;
+    if (race >= 1 && race <= 12) headerScore += 2;
+    if (ticketType >= 0 && ticketType <= 5) headerScore += 2;
 
     let label = 'unknown';
-    if (frontScore >= 7 && frontScore - backScore >= 3) label = 'front';
-    else if (backScore >= 4 && backScore - frontScore >= 2) label = 'back';
+    if (headerScore >= 10) label = 'front';
+    else if (headerScore <= 5 && tailSeqRun >= 16) label = 'back';
 
-    return { label, frontScore, backScore, tailRun };
+    return { label, headerScore, tailSeqRun, venue, year, kai, nichi, race, ticketType };
   }
 
-  static _isSameSidePair(a, b) {
-    if (!a || !b) return false;
-    if (a.label === 'unknown' || b.label === 'unknown') return false;
-    return a.label === b.label;
-  }
-
-  // 95桁は満たしていても、連番パターン中心の誤検出を除外する
-  static _isLikelyTicketHalf(digits95) {
+  static _looksLikeNoise(digits95) {
     const seqRatio = this._sequentialStepRatio(digits95);
     const tailRun = this._tailSequentialRun(digits95);
-    const headRun = this._headSequentialRun(digits95);
     const leadingZeros = this._leadingCharRun(digits95, '0');
-
-    // 例: 000000040567890123... のような連番偽陽性だけを強めに除外
-    // 正規フォーメーションを巻き込みにくいよう、複数条件の同時成立を要求する
-    if (seqRatio >= 0.62) return false;
-    if (tailRun >= 70) return false;
-    if (leadingZeros >= 5 && headRun >= 18 && seqRatio >= 0.48) return false;
-    return true;
+    if (seqRatio >= 0.70) return true;
+    if (tailRun >= 75) return true;
+    if (leadingZeros >= 6 && seqRatio >= 0.55) return true;
+    return false;
   }
 
-  // 隣接桁が +1(mod10) でつながる割合
   static _sequentialStepRatio(digits) {
     if (!digits || digits.length < 2) return 0;
     let hit = 0;
@@ -432,24 +332,10 @@ export class QRScanService {
     return hit / (digits.length - 1);
   }
 
-  // 末尾側の連番ラン長（...67890123 のような伸び）
   static _tailSequentialRun(digits) {
     if (!digits || digits.length < 2) return 0;
     let run = 1;
     for (let i = digits.length - 1; i > 0; i--) {
-      const prev = digits.charCodeAt(i - 1) - 48;
-      const curr = digits.charCodeAt(i) - 48;
-      if (((prev + 1) % 10) === curr) run++;
-      else break;
-    }
-    return run;
-  }
-
-  // 先頭側の連番ラン長
-  static _headSequentialRun(digits) {
-    if (!digits || digits.length < 2) return 0;
-    let run = 1;
-    for (let i = 1; i < digits.length; i++) {
       const prev = digits.charCodeAt(i - 1) - 48;
       const curr = digits.charCodeAt(i) - 48;
       if (((prev + 1) % 10) === curr) run++;
@@ -465,5 +351,13 @@ export class QRScanService {
       n++;
     }
     return n;
+  }
+
+  static _debug(msg) {
+    console.log('[QR]', msg);
+    const line = `${new Date().toLocaleTimeString('ja', { hour12: false })} ${msg}`;
+    this.debugHistory.push(line);
+    if (this.debugHistory.length > 200) this.debugHistory.shift();
+    if (this.debugEl) this.debugEl.textContent = line;
   }
 }
