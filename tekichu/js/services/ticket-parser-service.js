@@ -537,20 +537,29 @@ export class TicketParserService {
     pos += 1;
 
     const betType = this.BET_CODE_MAP[betCode];
-    const isTriple = betCode === '8' || betCode === '9';
+    const isTriple = betCode === '8' || betCode === '9'; // 3連系
 
-    const bitmap1 = this._parseBitmap(body.substring(pos, pos + 18));
-    pos += 18;
-    const bitmap2 = this._parseBitmap(body.substring(pos, pos + 18));
-    pos += 18;
+    // parse.dart準拠:
+    // [式別1][デリミタ1][18bit][18bit][18bit][金額5][マルチ1]
+    // 2連系フォーメでも3ブロック読むが、空ブロックは破棄される
+    if (pos + 1 > body.length) return bets;
+    pos += 1; // デリミタをスキップ
 
-    let bitmap3 = [];
-    if (isTriple) {
-      bitmap3 = this._parseBitmap(body.substring(pos, pos + 18));
+    const groups = [];
+    for (let g = 0; g < 3; g++) {
+      if (pos + 18 > body.length) return bets;
+      const bitmap = this._parseBitmap(body.substring(pos, pos + 18));
       pos += 18;
+      if (bitmap.length > 0) groups.push(bitmap);
     }
 
-    if (pos + 6 > body.length) return bets;
+    if (groups.length === 0) return bets;
+
+    const bitmap1 = groups[0] || [];
+    const bitmap2 = groups[1] || [];
+    const bitmap3 = groups[2] || [];
+
+    if (pos + 6 > body.length) return bets; // 金額5 + 末尾1
 
     const amountPer = parseInt(body.substring(pos, pos + 5)) * 100;
     pos += 5;
@@ -562,8 +571,10 @@ export class TicketParserService {
     // 組み合わせ数計算
     let combCount;
     if (isTriple) {
+      if (bitmap1.length === 0 || bitmap2.length === 0 || bitmap3.length === 0) return bets;
       combCount = this._formationTripleCombinations(betCode, bitmap1, bitmap2, bitmap3);
     } else {
+      if (bitmap1.length === 0 || bitmap2.length === 0) return bets;
       combCount = this._formationDoubleCombinations(betCode, bitmap1, bitmap2);
     }
     if (multi) {
