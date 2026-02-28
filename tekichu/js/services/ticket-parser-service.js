@@ -407,7 +407,9 @@ export class TicketParserService {
    *   5: [式別1][馬番2×18][金額5] = 42桁
    */
   static _parseBox(body, format) {
-    const maxHorses = format <= 2 ? 5 : format <= 4 ? 10 : 18;
+    // parse.dart準拠:
+    // format 1 => 5頭, format 3 => 10頭, それ以外 => 18頭
+    const maxHorses = format === 1 ? 5 : format === 3 ? 10 : 18;
     const entrySize = 1 + maxHorses * 2 + 5;
     const bets = [];
     let pos = 0;
@@ -457,70 +459,76 @@ export class TicketParserService {
     if (!this.BET_CODE_MAP[betCode]) return bets;
     pos += 1;
 
-    const pattern = parseInt(body[pos]);
+    // parse.dart準拠: ながし種別コード(1桁)
+    const wheelCode = body[pos];
     pos += 1;
 
     const betType = this.BET_CODE_MAP[betCode];
-    const isTriple = betCode === '8' || betCode === '9'; // 3連系
-    const needsThirdBitmap = isTriple;
+    let amountPer = 0;
+    let multi = false;
+    let horsesStr = '';
+    let combCount = 0;
 
-    // ビットマップ読み取り
-    const bitmap1 = this._parseBitmap(body.substring(pos, pos + 18));
-    pos += 18;
-    const bitmap2 = this._parseBitmap(body.substring(pos, pos + 18));
-    pos += 18;
+    if (betCode === '6' || betCode === '8') {
+      // [軸1_18][軸2_18][相手_18][金額5][(任意)マルチ1]
+      if (pos + 54 > body.length) return bets;
+      const axis1 = this._parseBitmap(body.substring(pos, pos + 18)); pos += 18;
+      const axis2 = this._parseBitmap(body.substring(pos, pos + 18)); pos += 18;
+      const partners = this._parseBitmap(body.substring(pos, pos + 18)); pos += 18;
 
-    let bitmap3 = [];
-    if (needsThirdBitmap) {
-      bitmap3 = this._parseBitmap(body.substring(pos, pos + 18));
-      pos += 18;
-    }
+      if (pos + 5 > body.length) return bets;
+      amountPer = parseInt(body.substring(pos, pos + 5), 10) * 100;
+      pos += 5;
+      if (amountPer <= 0) return bets;
 
-    if (pos + 6 > body.length) return bets;
+      // 末尾にマルチフラグがあるケースに備えて読む
+      if (pos < body.length) {
+        multi = body[pos] === '1';
+      }
 
-    const amountPer = parseInt(body.substring(pos, pos + 5)) * 100;
-    pos += 5;
-    const multi = parseInt(body[pos]) === 1;
-    pos += 1;
+      const axis = [...axis1, ...axis2];
+      horsesStr = `流 ${axis.join(',')}→${partners.join(',')}`;
+      combCount = partners.length;
+    } else if (betCode === '9') {
+      // [1着_18][2着_18][3着_18][金額5][マルチ1]
+      if (pos + 60 > body.length) return bets;
+      const bitmap1 = this._parseBitmap(body.substring(pos, pos + 18)); pos += 18;
+      const bitmap2 = this._parseBitmap(body.substring(pos, pos + 18)); pos += 18;
+      const bitmap3 = this._parseBitmap(body.substring(pos, pos + 18)); pos += 18;
 
-    if (amountPer <= 0) return bets;
+      amountPer = parseInt(body.substring(pos, pos + 5), 10) * 100;
+      pos += 5;
+      multi = body[pos] === '1';
+      pos += 1;
+      if (amountPer <= 0) return bets;
 
-    // 軸・相手を判定してホース表記を作る
-    let horsesStr;
-    let combCount;
-
-    if (isTriple) {
-      // 3連系ながし
-      combCount = this._nagashiTripleCombinations(betCode, pattern, bitmap1, bitmap2, bitmap3);
-      if (multi) combCount *= (betCode === '9' ? 6 : 3); // 3連単マルチ×6, 3連複マルチ×3
-
-      const axis = bitmap1.join(',');
-      const partners2 = bitmap2.join(',');
-      const partners3 = bitmap3.join(',');
-      horsesStr = `流 ${axis}→${partners2}→${partners3}`;
+      combCount = this._nagashiTripleCombinations(betCode, parseInt(wheelCode, 10), bitmap1, bitmap2, bitmap3);
+      if (multi) combCount *= 6;
+      horsesStr = `流 ${bitmap1.join(',')}→${bitmap2.join(',')}→${bitmap3.join(',')}`;
     } else {
-      // 2連系ながし
-      combCount = bitmap1.length * bitmap2.length;
-      // 同じ馬番の重複分を引く
-      const overlap = bitmap1.filter(h => bitmap2.includes(h)).length;
-      combCount -= overlap;
-      if (multi && betCode === '6') combCount *= 2; // 馬単マルチ
+      // [軸2桁][金額5][相手_18]
+      if (pos + 25 > body.length) return bets;
+      const axis = parseInt(body.substring(pos, pos + 2), 10);
+      pos += 2;
+      amountPer = parseInt(body.substring(pos, pos + 5), 10) * 100;
+      pos += 5;
+      const partners = this._parseBitmap(body.substring(pos, pos + 18));
+      pos += 18;
+      if (amountPer <= 0) return bets;
 
-      const axis = bitmap1.join(',');
-      const partners = bitmap2.join(',');
-      horsesStr = `流 ${axis}→${partners}`;
+      combCount = partners.length;
+      horsesStr = `流 ${axis}→${partners.join(',')}`;
     }
 
-    const totalAmount = amountPer * combCount;
-
+    const totalAmount = amountPer * Math.max(1, combCount);
     bets.push({
       betType,
       horses: horsesStr,
       amount: totalAmount,
       ticketFormat: multi ? 'ながしマルチ' : 'ながし',
-      detail: `${combCount}点×${amountPer}円`,
+      detail: `${Math.max(1, combCount)}点×${amountPer}円`,
+      wheelCode,
     });
-
     return bets;
   }
 
