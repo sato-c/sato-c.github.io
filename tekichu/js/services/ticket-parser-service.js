@@ -421,16 +421,33 @@ export class TicketParserService {
 
       // 馬番を抽出（00は除く）
       const horses = [];
+      let sawZeroSlot = false;
+      let invalidSlots = false;
       for (let i = 0; i < maxHorses; i++) {
-        const h = parseInt(chunk.substring(1 + i * 2, 3 + i * 2));
-        if (h > 0) horses.push(h);
+        const h = parseInt(chunk.substring(1 + i * 2, 3 + i * 2), 10);
+        if (!Number.isFinite(h) || h < 0 || h > 18) {
+          invalidSlots = true;
+          break;
+        }
+        if (h === 0) {
+          sawZeroSlot = true;
+          continue;
+        }
+        if (sawZeroSlot) {
+          invalidSlots = true;
+          break;
+        }
+        horses.push(h);
       }
-      if (horses.length === 0) break;
+      if (invalidSlots || horses.length === 0) break;
+      if (new Set(horses).size !== horses.length) break;
 
-      const amountPer = parseInt(chunk.substring(entrySize - 5)) * 100;
-      if (amountPer <= 0) break;
+      const amountPer = parseInt(chunk.substring(entrySize - 5), 10) * 100;
+      if (!Number.isFinite(amountPer) || amountPer <= 0) break;
+      if (amountPer > 5000000) break;
 
       const combCount = this._boxCombinations(betCode, horses.length);
+      if (!Number.isFinite(combCount) || combCount <= 0) break;
       const totalAmount = amountPer * combCount;
 
       bets.push({
