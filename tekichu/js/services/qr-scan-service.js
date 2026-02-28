@@ -16,6 +16,8 @@ export class QRScanService {
   static stream = null;
   static scanning = false;
   static onComplete = null;
+  static onStop = null;
+  static stopNotified = false;
   static animFrame = null;
   static statusEl = null;
   static debugEl = null;
@@ -35,12 +37,14 @@ export class QRScanService {
     { maxDim: 640, cropRatio: 1.0 },
   ];
 
-  static start(callback) {
+  static start(callback, options = {}) {
     if (typeof jsQR === 'undefined') {
       throw new Error('jsQRライブラリが読み込まれていません');
     }
 
     this.onComplete = callback;
+    this.onStop = typeof options.onStop === 'function' ? options.onStop : null;
+    this.stopNotified = false;
     this.debugHistory = [];
     this.firstHalf = null;
     this.secondHalf = null;
@@ -52,7 +56,8 @@ export class QRScanService {
     this._startCamera();
   }
 
-  static stop() {
+  static stop(reason = 'cancelled') {
+    this._notifyStop(reason);
     this.scanning = false;
     if (this.animFrame) {
       cancelAnimationFrame(this.animFrame);
@@ -82,7 +87,7 @@ export class QRScanService {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'qr-scanner-close';
     closeBtn.textContent = '✕';
-    closeBtn.addEventListener('click', () => this.stop());
+    closeBtn.addEventListener('click', () => this.stop('cancelled'));
     header.appendChild(closeBtn);
 
     this.overlay.appendChild(header);
@@ -248,6 +253,15 @@ export class QRScanService {
       return;
     }
 
+    const h = this._splitHeader14(cleaned);
+    this._debug(
+      `hdr 1:${h.d1} 2-3:${h.d23} 4-6:${h.d456} 7-8:${h.d78} 9-10:${h.d910} 11-12:${h.d1112} 13-14:${h.d1314}`
+    );
+    const venueName = this._venueName(h.d23);
+    if (venueName) {
+      this._debug(`hdr venue:${venueName} yy:${h.d78} kai:${h.d910} day:${h.d1112} race:${h.d1314}`);
+    }
+
     const role = this._classifyHalf(cleaned);
     this._debug(`候補 role=${role.label} hdr=${role.headerScore} tail=${role.tailSeqRun}`);
 
@@ -280,7 +294,7 @@ export class QRScanService {
     const code2 = this.secondHalf.code;
 
     setTimeout(() => {
-      this.stop();
+      this.stop('completed');
       if (cb) cb(code1, code2, { sources, roles, history });
     }, 380);
   }
@@ -353,11 +367,60 @@ export class QRScanService {
     return n;
   }
 
+  static _splitHeader14(digits95) {
+    const s = digits95;
+    return {
+      d1: s.substring(0, 1),
+      d23: s.substring(1, 3),
+      d456: s.substring(3, 6),
+      d78: s.substring(6, 8),
+      d910: s.substring(8, 10),
+      d1112: s.substring(10, 12),
+      d1314: s.substring(12, 14),
+    };
+  }
+
+  static _venueName(code2) {
+    const map = {
+      '01': '札幌',
+      '02': '函館',
+      '03': '福島',
+      '04': '新潟',
+      '05': '東京',
+      '06': '中山',
+      '07': '中京',
+      '08': '京都',
+      '09': '阪神',
+      '10': '小倉',
+    };
+    return map[code2] || null;
+  }
+
   static _debug(msg) {
     console.log('[QR]', msg);
     const line = `${new Date().toLocaleTimeString('ja', { hour12: false })} ${msg}`;
     this.debugHistory.push(line);
     if (this.debugHistory.length > 200) this.debugHistory.shift();
     if (this.debugEl) this.debugEl.textContent = line;
+  }
+
+  static _notifyStop(reason) {
+    if (this.stopNotified) return;
+    this.stopNotified = true;
+    if (!this.onStop) return;
+
+    const report = {
+      reason,
+      firstRole: this.firstHalf?.role?.label || null,
+      secondRole: this.secondHalf?.role?.label || null,
+      history: [...this.debugHistory],
+      firstCodeHead: this.firstHalf?.code?.substring(0, 24) || null,
+      secondCodeHead: this.secondHalf?.code?.substring(0, 24) || null,
+    };
+    try {
+      this.onStop(report);
+    } catch (e) {
+      // no-op
+    }
   }
 }

@@ -27,7 +27,6 @@ export class InputView {
   static show() {
     this.editingId = null;
     this.qrResult = null;
-    this.qrScanReport = null;
     this.render();
     this.element.style.display = '';
   }
@@ -39,7 +38,6 @@ export class InputView {
   static editRecord(record) {
     this.editingId = record.id;
     this.qrResult = null;
-    this.qrScanReport = null;
     this.render();
     this.element.style.display = '';
     this.fillForm(record);
@@ -139,12 +137,35 @@ export class InputView {
 
   static startQRScan() {
     try {
-      QRScanService.start((code1, code2, scanMeta) => {
-        this._handleQRResult(code1, code2, scanMeta);
-      });
+      QRScanService.start(
+        (code1, code2, scanMeta) => {
+          this._handleQRResult(code1, code2, scanMeta);
+        },
+        {
+          onStop: (report) => this._handleQRStop(report),
+        }
+      );
     } catch (e) {
       NotificationManager.error(e.message);
     }
+  }
+
+  static _handleQRStop(report) {
+    if (!report) return;
+    if (report.reason === 'completed') return;
+    this.qrScanReport = {
+      order: 'n/a',
+      bodyOffset: 'n/a',
+      parseScore: 'n/a',
+      sources: [],
+      history: report.history || [],
+      stopReason: report.reason,
+      firstRole: report.firstRole,
+      secondRole: report.secondRole,
+      firstCodeHead: report.firstCodeHead,
+      secondCodeHead: report.secondCodeHead,
+    };
+    this.render();
   }
 
   static _handleQRResult(code1, code2, scanMeta = null) {
@@ -196,9 +217,18 @@ export class InputView {
     const engines = this.qrScanReport.sources.length > 0
       ? this.qrScanReport.sources.map(s => s?.engine || 'unknown').join(' + ')
       : 'unknown';
+    const stopReason = this.qrScanReport.stopReason ? ` stop:${this.qrScanReport.stopReason}` : '';
     info.textContent =
-      `engine:${engines} order:${this.qrScanReport.order} offset:${this.qrScanReport.bodyOffset} score:${this.qrScanReport.parseScore}`;
+      `engine:${engines} order:${this.qrScanReport.order} offset:${this.qrScanReport.bodyOffset} score:${this.qrScanReport.parseScore}${stopReason}`;
     wrap.appendChild(info);
+
+    if (this.qrScanReport.firstRole || this.qrScanReport.secondRole) {
+      const roleInfo = document.createElement('div');
+      roleInfo.className = 'qr-preview__item';
+      roleInfo.textContent =
+        `role1:${this.qrScanReport.firstRole || '-'} role2:${this.qrScanReport.secondRole || '-'}`;
+      wrap.appendChild(roleInfo);
+    }
 
     const pre = document.createElement('pre');
     pre.style.cssText =
