@@ -259,6 +259,8 @@ export class QRScanService {
     const noise = this._noiseStats(cleaned);
 
     const h = this._splitHeader14(cleaned);
+    const fillerHead = this._startsWithFillerHead(cleaned);
+    const invalidHeader = this._isClearlyInvalidHeader(h);
     this._debug(
       `hdr 1:${h.d1} 2-3:${h.d23} 4-6:${h.d456} 7-8:${h.d78} 9-10:${h.d910} 11-12:${h.d1112} 13-14:${h.d1314}`
     );
@@ -267,15 +269,19 @@ export class QRScanService {
       this._debug(`hdr venue:${venueName} yy:${h.d78} kai:${h.d910} day:${h.d1112} race:${h.d1314}`);
     }
 
-    const role = this._classifyHalf(cleaned);
-    this._debug(`候補 role=${role.label} hdr=${role.headerScore} tail=${role.tailSeqRun} noise=${noise.seqRatio.toFixed(2)}/${noise.tailRun}`);
+    const role = (fillerHead || invalidHeader)
+      ? this._forceBackRole(cleaned, fillerHead ? 'filler' : 'invalid-header')
+      : this._classifyHalf(cleaned);
+    this._debug(
+      `候補 role=${role.label} hdr=${role.headerScore} tail=${role.tailSeqRun} filler=${fillerHead} invalidHeader=${invalidHeader} noise=${noise.seqRatio.toFixed(2)}/${noise.tailRun}`
+    );
 
     // 1枚目はノイズ除外を強め、2枚目は除外しすぎない
-    if (!this.firstHalf && noise.isNoise) {
+    if (!this.firstHalf && noise.isNoise && !fillerHead && !invalidHeader) {
       this._debug('除外: 1枚目ノイズ疑い');
       return;
     }
-    if (this.firstHalf && noise.isNoise && role.label === 'unknown') {
+    if (this.firstHalf && noise.isNoise && role.label === 'unknown' && !fillerHead && !invalidHeader) {
       this._debug('除外: 2枚目ノイズ疑い(role unknown)');
       return;
     }
@@ -328,7 +334,7 @@ export class QRScanService {
     if (format >= 1 && format <= 5) headerScore += 2;
     if (venue >= 1 && venue <= 10) headerScore += 4;
     if (year >= 0 && year <= 99) headerScore += 1;
-    if (kai >= 1 && kai <= 12) headerScore += 1;
+    if (kai >= 1 && kai <= 8) headerScore += 1;
     if (nichi >= 1 && nichi <= 12) headerScore += 1;
     if (race >= 1 && race <= 12) headerScore += 2;
     if (ticketType >= 0 && ticketType <= 5) headerScore += 2;
@@ -350,6 +356,40 @@ export class QRScanService {
     const leadingZeros = this._leadingCharRun(digits95, '0');
     const isNoise = seqRatio >= 0.75 || tailRun >= 82 || (leadingZeros >= 7 && seqRatio >= 0.60);
     return { isNoise, seqRatio, tailRun, leadingZeros };
+  }
+
+  static _startsWithFillerHead(digits95) {
+    return digits95.startsWith('0123') || digits95.startsWith('1234');
+  }
+
+  static _isClearlyInvalidHeader(h) {
+    const venue = parseInt(h.d23, 10);
+    const year = parseInt(h.d78, 10);
+    const kai = parseInt(h.d910, 10);
+    const nichi = parseInt(h.d1112, 10);
+    const race = parseInt(h.d1314, 10);
+
+    if (!(venue >= 1 && venue <= 10)) return true;
+    if (!(year >= 0 && year <= 99)) return true;
+    if (!(kai >= 1 && kai <= 8)) return true;
+    if (!(nichi >= 1 && nichi <= 12)) return true;
+    if (!(race >= 1 && race <= 12)) return true;
+    return false;
+  }
+
+  static _forceBackRole(digits95, reason) {
+    return {
+      label: 'back',
+      headerScore: 0,
+      tailSeqRun: this._tailSequentialRun(digits95),
+      reason,
+      venue: null,
+      year: null,
+      kai: null,
+      nichi: null,
+      race: null,
+      ticketType: null,
+    };
   }
 
   static _sequentialStepRatio(digits) {
