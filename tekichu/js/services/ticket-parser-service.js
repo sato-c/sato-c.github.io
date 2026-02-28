@@ -142,14 +142,15 @@ export class TicketParserService {
 
     // 本文開始位置は原則 42 固定。42で成立するならそれを最優先する。
     let best = this._tryParseAtOffset(digits190, format, ticketType, 42);
-    if (best.bets.length > 0) {
+    if (this._isUsableParse(best, ticketType)) {
       result.bets = best.bets;
       result.bodyOffset = 42;
       result.parseScore = best.score;
+      result.offsetReason = 'fixed-42';
       return result;
     }
 
-    // 42が全滅時のみ、近傍を試す
+    // 42が失敗時のみ、近傍(41/43)を試す
     const primaryOffsets = [41, 43];
     for (const bodyOffset of primaryOffsets) {
       const cand = this._tryParseAtOffset(digits190, format, ticketType, bodyOffset);
@@ -158,20 +159,12 @@ export class TicketParserService {
       }
     }
 
-    // 2nd pass: 全滅時のみ探索範囲を拡張（単勝1点などの取りこぼし救済）
-    if (best.score <= -1000) {
-      for (let bodyOffset = 36; bodyOffset <= 50; bodyOffset++) {
-        if (bodyOffset === 42 || primaryOffsets.includes(bodyOffset)) continue;
-        const cand = this._tryParseAtOffset(digits190, format, ticketType, bodyOffset);
-        if (cand.score > best.score) {
-          best = cand;
-        }
-      }
-    }
+    // フォーメーションは過剰探索で壊れやすいので、42/41/43以外は試さない
 
     result.bets = best.bets;
     result.bodyOffset = best.bodyOffset;
     result.parseScore = best.score;
+    result.offsetReason = best.bodyOffset === 42 ? 'fixed-42' : 'fallback-nearby';
     if (best.bodyOffset !== 42) {
       console.log(`[QR parse] bodyOffset adjusted: ${best.bodyOffset}`);
     }
@@ -188,6 +181,23 @@ export class TicketParserService {
     } catch (e) {
       return { bets: [], score: -Infinity, bodyOffset };
     }
+  }
+
+  static _isUsableParse(candidate, ticketType) {
+    if (!candidate || !Array.isArray(candidate.bets)) return false;
+    if (candidate.bets.length === 0) return false;
+
+    const amounts = candidate.bets.map(b => Number(b.amount || 0));
+    const hasPositiveAmount = amounts.some(a => Number.isFinite(a) && a > 0);
+    if (!hasPositiveAmount) return false;
+
+    // フォーメーションは0円/空に近い解釈を弾く
+    if (ticketType === 3) {
+      if (amounts.some(a => !Number.isFinite(a) || a <= 0)) return false;
+      if (candidate.score < 0) return false;
+    }
+
+    return true;
   }
 
   static _parseByTicketType(body, format, ticketType) {
@@ -229,7 +239,7 @@ export class TicketParserService {
         if (amount > 100000) score -= 60;
         if (amount % 100 === 0) score += 8;
       } else {
-        score -= 50;
+        score -= 120;
       }
 
       if (typeof bet.horses === 'string' && bet.horses.length > 0) {
