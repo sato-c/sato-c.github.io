@@ -5,6 +5,7 @@
 // アプリ設定
 export const APP_CONFIG = {
   DEFAULT_TITLE: 'TEKICHU',
+  SHOW_QR_DEBUG_UI: false,
 };
 
 // ストレージキー

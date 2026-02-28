@@ -7,7 +7,7 @@ import { MessageBus, NotificationManager } from '../../strata/index.js';
 import { DataService } from '../services/data-service.js';
 import { QRScanService } from '../services/qr-scan-service.js';
 import { TicketParserService } from '../services/ticket-parser-service.js';
-import { BET_TYPES } from '../constants.js';
+import { APP_CONFIG, BET_TYPES } from '../constants.js';
 
 export class InputView {
   static container = null;
@@ -63,7 +63,7 @@ export class InputView {
       qrBtn.addEventListener('click', () => this.startQRScan());
       form.appendChild(qrBtn);
 
-      if (this.qrScanReport) {
+      if (this.qrScanReport && APP_CONFIG.SHOW_QR_DEBUG_UI) {
         form.appendChild(this._createQRScanReportBox());
       }
     }

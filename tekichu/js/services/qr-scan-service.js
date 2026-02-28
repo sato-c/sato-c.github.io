@@ -8,6 +8,8 @@
  * - 2枚揃ったらそのままコールバックへ渡す（順序最終判定は上位で実施）
  */
 
+import { APP_CONFIG } from '../constants.js';
+
 export class QRScanService {
   static overlay = null;
   static video = null;
@@ -121,13 +123,17 @@ export class QRScanService {
     failBtn.addEventListener('click', () => this.stop('failed'));
     this.overlay.appendChild(failBtn);
 
-    this.debugEl = document.createElement('div');
-    this.debugEl.style.cssText =
-      'position:absolute;top:50px;left:8px;right:8px;color:#0f0;font-size:11px;' +
-      'font-family:monospace;background:rgba(0,0,0,0.6);padding:6px;border-radius:4px;' +
-      'z-index:3;max-height:220px;overflow:auto;word-break:break-all;white-space:pre-wrap;';
-    this.debugEl.textContent = '初期化中...';
-    this.overlay.appendChild(this.debugEl);
+    if (APP_CONFIG.SHOW_QR_DEBUG_UI) {
+      this.debugEl = document.createElement('div');
+      this.debugEl.style.cssText =
+        'position:absolute;top:50px;left:8px;right:8px;color:#0f0;font-size:11px;' +
+        'font-family:monospace;background:rgba(0,0,0,0.6);padding:6px;border-radius:4px;' +
+        'z-index:3;max-height:220px;overflow:auto;word-break:break-all;white-space:pre-wrap;';
+      this.debugEl.textContent = '初期化中...';
+      this.overlay.appendChild(this.debugEl);
+    } else {
+      this.debugEl = null;
+    }
 
     document.body.appendChild(this.overlay);
   }
