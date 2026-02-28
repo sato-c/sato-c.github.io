@@ -113,11 +113,19 @@ export class QRScanService {
     this.statusEl.textContent = '馬券のQRコードを読んでください（1/2）';
     this.overlay.appendChild(this.statusEl);
 
+    const failBtn = document.createElement('button');
+    failBtn.className = 'btn btn--secondary';
+    failBtn.textContent = '中断してログ保存';
+    failBtn.style.cssText =
+      'position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:4;';
+    failBtn.addEventListener('click', () => this.stop('failed'));
+    this.overlay.appendChild(failBtn);
+
     this.debugEl = document.createElement('div');
     this.debugEl.style.cssText =
       'position:absolute;top:50px;left:8px;right:8px;color:#0f0;font-size:11px;' +
       'font-family:monospace;background:rgba(0,0,0,0.6);padding:6px;border-radius:4px;' +
-      'z-index:3;max-height:150px;overflow:auto;word-break:break-all;';
+      'z-index:3;max-height:220px;overflow:auto;word-break:break-all;white-space:pre-wrap;';
     this.debugEl.textContent = '初期化中...';
     this.overlay.appendChild(this.debugEl);
 
@@ -248,10 +256,7 @@ export class QRScanService {
     if (cleaned.length !== 95) return;
 
     if (this.firstHalf?.code === cleaned || this.secondHalf?.code === cleaned) return;
-    if (this._looksLikeNoise(cleaned)) {
-      this._debug('除外: 連番ノイズ疑い');
-      return;
-    }
+    const noise = this._noiseStats(cleaned);
 
     const h = this._splitHeader14(cleaned);
     this._debug(
@@ -263,7 +268,17 @@ export class QRScanService {
     }
 
     const role = this._classifyHalf(cleaned);
-    this._debug(`候補 role=${role.label} hdr=${role.headerScore} tail=${role.tailSeqRun}`);
+    this._debug(`候補 role=${role.label} hdr=${role.headerScore} tail=${role.tailSeqRun} noise=${noise.seqRatio.toFixed(2)}/${noise.tailRun}`);
+
+    // 1枚目はノイズ除外を強め、2枚目は除外しすぎない
+    if (!this.firstHalf && noise.isNoise) {
+      this._debug('除外: 1枚目ノイズ疑い');
+      return;
+    }
+    if (this.firstHalf && noise.isNoise && role.label === 'unknown') {
+      this._debug('除外: 2枚目ノイズ疑い(role unknown)');
+      return;
+    }
 
     if (!this.firstHalf) {
       this.firstHalf = { code: cleaned, role, meta };
@@ -326,13 +341,15 @@ export class QRScanService {
   }
 
   static _looksLikeNoise(digits95) {
+    return this._noiseStats(digits95).isNoise;
+  }
+
+  static _noiseStats(digits95) {
     const seqRatio = this._sequentialStepRatio(digits95);
     const tailRun = this._tailSequentialRun(digits95);
     const leadingZeros = this._leadingCharRun(digits95, '0');
-    if (seqRatio >= 0.70) return true;
-    if (tailRun >= 75) return true;
-    if (leadingZeros >= 6 && seqRatio >= 0.55) return true;
-    return false;
+    const isNoise = seqRatio >= 0.75 || tailRun >= 82 || (leadingZeros >= 7 && seqRatio >= 0.60);
+    return { isNoise, seqRatio, tailRun, leadingZeros };
   }
 
   static _sequentialStepRatio(digits) {
@@ -401,7 +418,10 @@ export class QRScanService {
     const line = `${new Date().toLocaleTimeString('ja', { hour12: false })} ${msg}`;
     this.debugHistory.push(line);
     if (this.debugHistory.length > 200) this.debugHistory.shift();
-    if (this.debugEl) this.debugEl.textContent = line;
+    if (this.debugEl) {
+      this.debugEl.textContent = this.debugHistory.slice(-20).join('\n');
+      this.debugEl.scrollTop = this.debugEl.scrollHeight;
+    }
   }
 
   static _notifyStop(reason) {
