@@ -8,6 +8,7 @@
 // Core
 // ===========================================
 export { Utils } from './core/utils.js';
+export { I18n } from './core/i18n.js';
 export { MessageBus } from './core/message-bus.js';
 export { NotificationManager } from './core/notification-manager.js';
 export { ErrorManager } from './core/error-manager.js';

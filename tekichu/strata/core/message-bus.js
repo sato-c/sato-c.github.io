@@ -1,40 +1,42 @@
 /**
- * MessageBus - モジュール間通信
- * 依存: なし
+ * MessageBus - lightweight event bus for module communication.
  */
 
 export class MessageBus {
   static listeners = {};
-  
+
   /**
-   * イベント購読
-   * @param {string} action - アクション名
-   * @param {Function} callback - コールバック関数
+   * Subscribe to an action.
+   * Returns an unsubscribe function for cleanup.
+   * @param {string} action
+   * @param {(data: any) => void} callback
+   * @returns {() => void}
    */
   static on(action, callback) {
     if (!this.listeners[action]) {
       this.listeners[action] = [];
     }
     this.listeners[action].push(callback);
+    return () => this.off(action, callback);
   }
-  
+
   /**
-   * イベント購読解除
-   * @param {string} action - アクション名
-   * @param {Function} callback - コールバック関数
+   * Unsubscribe a callback from an action.
+   * @param {string} action
+   * @param {(data: any) => void} callback
    */
   static off(action, callback) {
     if (!this.listeners[action]) return;
-    this.listeners[action] = this.listeners[action].filter(cb => cb !== callback);
+    this.listeners[action] = this.listeners[action].filter((cb) => cb !== callback);
   }
-  
+
   /**
-   * イベント送信
-   * @param {Object} intent - { action: string, data: any }
+   * Dispatch an intent object.
+   * @param {{action: string, data: any}} intent
    */
   static send(intent) {
     const callbacks = this.listeners[intent.action] || [];
-    callbacks.forEach(callback => {
+    callbacks.forEach((callback) => {
       try {
         callback(intent.data);
       } catch (error) {
@@ -45,18 +47,18 @@ export class MessageBus {
       }
     });
   }
-  
+
   /**
-   * イベント送信（emit形式）
-   * @param {string} action - アクション名
-   * @param {any} data - データ
+   * Dispatch an action + data pair.
+   * @param {string} action
+   * @param {any} data
    */
   static emit(action, data = null) {
     this.send({ action, data });
   }
-  
+
   /**
-   * 全リスナー解除
+   * Remove all listeners.
    */
   static clear() {
     this.listeners = {};

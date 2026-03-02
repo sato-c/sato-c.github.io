@@ -1,9 +1,5 @@
 /**
- * StorageManager - データ永続化管理
- * 依存: StorageAdapter, MessageBus
- * 
- * Adapterを外部から注入することで、localStorage以外のストレージにも対応可能。
- * パネル状態管理はPanelManagerに移動済み。
+ * storage-manager.js - manager module.
  */
 
 import { MessageBus } from '../core/message-bus.js';
@@ -11,6 +7,9 @@ import { MessageBus } from '../core/message-bus.js';
 export class StorageManager {
   static adapter = null;
   static isOnline = true;
+  static initialized = false;
+  static onlineHandler = null;
+  static offlineHandler = null;
   
   // =========================================
   // Adapter設定
@@ -42,14 +41,25 @@ export class StorageManager {
    * 初期化
    */
   static async init() {
+    if (this.initialized) {
+      return;
+    }
+
     if (!this.adapter) {
       throw new Error('[StorageManager] Adapter not set. Call setAdapter() first.');
     }
     
     // オンライン状態監視
-    window.addEventListener('online', () => this.onOnline());
-    window.addEventListener('offline', () => this.onOffline());
+    if (!this.onlineHandler) {
+      this.onlineHandler = () => this.onOnline();
+    }
+    if (!this.offlineHandler) {
+      this.offlineHandler = () => this.onOffline();
+    }
+    window.addEventListener('online', this.onlineHandler);
+    window.addEventListener('offline', this.offlineHandler);
     this.isOnline = navigator.onLine;
+    this.initialized = true;
     
     console.log('[StorageManager] Initialized');
   }
@@ -152,5 +162,15 @@ export class StorageManager {
    */
   static getIsOnline() {
     return this.isOnline;
+  }
+
+  static destroy() {
+    if (this.onlineHandler) {
+      window.removeEventListener('online', this.onlineHandler);
+    }
+    if (this.offlineHandler) {
+      window.removeEventListener('offline', this.offlineHandler);
+    }
+    this.initialized = false;
   }
 }

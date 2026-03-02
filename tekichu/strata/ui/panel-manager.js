@@ -1,15 +1,12 @@
 /**
- * PanelManager - パネル管理
- * 依存: StorageManager, Utils, ErrorManager, MessageBus
- * 
- * フローティングパネルのDOM生成・ドラッグ・リサイズを管理。
- * init(options)で設定を外部注入（CONFIG依存を排除）。
+ * panel-manager.js - manager module.
  */
 
 import { StorageManager } from '../storage/storage-manager.js';
 import { Utils } from '../core/utils.js';
 import { ErrorManager } from '../core/error-manager.js';
 import { MessageBus } from '../core/message-bus.js';
+import { I18n } from '../core/i18n.js';
 
 export class PanelManager {
   // =========================================
@@ -18,6 +15,9 @@ export class PanelManager {
   
   static panels = new Map();
   static saveStateTimers = {};
+  static initialized = false;
+  static unsubscribeSave = null;
+  static unsubscribeSaveImmediate = null;
   
   // [STRATA変更] CONFIG依存を排除、init(options)で設定
   static options = {
@@ -46,6 +46,10 @@ export class PanelManager {
    */
   static init(options = {}) {
     this.options = { ...this.options, ...options };
+
+    if (this.initialized) {
+      return;
+    }
     this.currentZIndex = this.options.zIndexMin;
     
     // コンテナ確認
@@ -56,15 +60,16 @@ export class PanelManager {
     }
     
     // 保存リクエスト購読
-    MessageBus.on('request-save', ({ panelId }) => {
+    this.unsubscribeSave = MessageBus.on('request-save', ({ panelId }) => {
       this.scheduleSaveState(panelId);
     });
     
     // 即時保存リクエスト購読
-    MessageBus.on('request-save-immediate', ({ panelId }) => {
+    this.unsubscribeSaveImmediate = MessageBus.on('request-save-immediate', ({ panelId }) => {
       this.saveState(panelId);
     });
     
+    this.initialized = true;
     console.log('[PanelManager] Initialized');
   }
   
@@ -168,6 +173,7 @@ export class PanelManager {
       
       // イベントリスナー設定
       this.setupPanelEventListeners(panelId);
+      this.bringToFront(panelId);
       
       // onShow呼び出し
       if (typeof instance.onShow === 'function') {
@@ -288,8 +294,13 @@ export class PanelManager {
     
     const entry = this.panels.get(panelId);
     if (!entry) return;
+
+    for (const panelEntry of this.panels.values()) {
+      panelEntry.element.classList.remove('panel--active');
+    }
     
     entry.element.style.zIndex = this.currentZIndex++;
+    entry.element.classList.add('panel--active');
   }
   
   /**
@@ -346,8 +357,8 @@ export class PanelManager {
     if (config.showRefresh) {
       const refreshBtn = document.createElement('button');
       refreshBtn.className = 'panel-btn panel-btn--refresh';
-      refreshBtn.textContent = '↻';
-      refreshBtn.title = '更新';
+      refreshBtn.textContent = I18n.t('ui.panel.refreshSymbol');
+      refreshBtn.title = I18n.t('ui.panel.refreshTitle');
       buttons.appendChild(refreshBtn);
     }
     
@@ -355,8 +366,8 @@ export class PanelManager {
     if (config.showMaximize) {
       const maxBtn = document.createElement('button');
       maxBtn.className = 'panel-btn panel-btn--maximize';
-      maxBtn.textContent = '□';
-      maxBtn.title = '最大化';
+      maxBtn.textContent = I18n.t('ui.panel.maximizeSymbol');
+      maxBtn.title = I18n.t('ui.panel.maximizeTitle');
       buttons.appendChild(maxBtn);
     }
     
@@ -364,8 +375,8 @@ export class PanelManager {
     if (config.showClose !== false) {
       const closeBtn = document.createElement('button');
       closeBtn.className = 'panel-btn panel-btn--close';
-      closeBtn.textContent = '×';
-      closeBtn.title = '閉じる';
+      closeBtn.textContent = I18n.t('ui.common.closeSymbol');
+      closeBtn.title = I18n.t('ui.panel.closeTitle');
       buttons.appendChild(closeBtn);
     }
     
@@ -751,5 +762,23 @@ export class PanelManager {
       entry.element.style.top = `${config.defaultPosition.top}px`;
       this.saveState(panelId);
     }
+  }
+
+  static destroy() {
+    if (typeof this.unsubscribeSave === 'function') {
+      this.unsubscribeSave();
+    }
+    if (typeof this.unsubscribeSaveImmediate === 'function') {
+      this.unsubscribeSaveImmediate();
+    }
+    this.unsubscribeSave = null;
+    this.unsubscribeSaveImmediate = null;
+
+    for (const panelId of Object.keys(this.saveStateTimers)) {
+      clearTimeout(this.saveStateTimers[panelId]);
+      delete this.saveStateTimers[panelId];
+    }
+
+    this.initialized = false;
   }
 }

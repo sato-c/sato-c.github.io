@@ -1,9 +1,5 @@
 /**
- * APIManager - 外部API通信管理
- * 依存: Utils, AuthManager（任意）
- * 
- * キャッシュ、リトライ、タイムアウト対応。
- * options.auth = true でAuthManagerのトークンを自動付与。
+ * api-manager.js - manager module.
  */
 
 import { Utils } from '../core/utils.js';
@@ -12,6 +8,9 @@ export class APIManager {
   static cache = new Map();
   static pendingRequests = new Set();
   static isOnlineFlag = true;
+  static initialized = false;
+  static onlineHandler = null;
+  static offlineHandler = null;
   
   static DEFAULT_TIMEOUT = 30000;
   static DEFAULT_RETRY = 3;
@@ -23,13 +22,24 @@ export class APIManager {
   // =========================================
   
   static init() {
-    window.addEventListener('online', () => {
-      this.isOnlineFlag = true;
-    });
-    window.addEventListener('offline', () => {
-      this.isOnlineFlag = false;
-    });
+    if (this.initialized) {
+      return;
+    }
+
+    if (!this.onlineHandler) {
+      this.onlineHandler = () => {
+        this.isOnlineFlag = true;
+      };
+    }
+    if (!this.offlineHandler) {
+      this.offlineHandler = () => {
+        this.isOnlineFlag = false;
+      };
+    }
+    window.addEventListener('online', this.onlineHandler);
+    window.addEventListener('offline', this.offlineHandler);
     this.isOnlineFlag = navigator.onLine;
+    this.initialized = true;
     
     console.log('[APIManager] Initialized');
   }
@@ -89,7 +99,7 @@ export class APIManager {
     
     // キャッシュチェック（GETのみ）
     if (method === 'GET' && options.cache !== false) {
-      const cacheKey = options.cacheKey || url;
+      const cacheKey = await this.buildCacheKey(url, options);
       const cached = this.getCached(cacheKey);
       if (cached !== null) {
         return cached;
@@ -101,7 +111,7 @@ export class APIManager {
     
     // キャッシュ保存（GETのみ）
     if (method === 'GET' && options.cache !== false) {
-      const cacheKey = options.cacheKey || url;
+      const cacheKey = await this.buildCacheKey(url, options);
       const ttl = options.cacheTTL || this.DEFAULT_CACHE_TTL;
       this.setCache(cacheKey, result, ttl);
     }
@@ -221,14 +231,30 @@ export class APIManager {
     
     return entry.data;
   }
-  
+
   static setCache(key, data, ttl = this.DEFAULT_CACHE_TTL) {
     this.cache.set(key, {
       data,
       expiresAt: Date.now() + ttl
     });
   }
-  
+
+  static async buildCacheKey(url, options = {}) {
+    const baseKey = options.cacheKey || url;
+    if (!options.auth) {
+      return baseKey;
+    }
+
+    try {
+      const { AuthManager } = await import('../auth/auth-manager.js');
+      const token = AuthManager.getToken() || 'anonymous';
+      const userKey = String(token).slice(0, 12);
+      return `${baseKey}::auth:${userKey}`;
+    } catch {
+      return `${baseKey}::auth:unknown`;
+    }
+  }
+
   /**
    * キャッシュクリア
    * @param {string|null} keyPattern - nullで全クリア、文字列で部分一致削除
@@ -255,5 +281,23 @@ export class APIManager {
   
   static getPendingRequests() {
     return this.pendingRequests.size;
+  }
+
+  static destroy() {
+    if (this.onlineHandler) {
+      window.removeEventListener('online', this.onlineHandler);
+    }
+    if (this.offlineHandler) {
+      window.removeEventListener('offline', this.offlineHandler);
+    }
+    for (const controller of this.pendingRequests) {
+      try {
+        controller.abort();
+      } catch {
+        // noop
+      }
+    }
+    this.pendingRequests.clear();
+    this.initialized = false;
   }
 }

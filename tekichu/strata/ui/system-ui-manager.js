@@ -1,13 +1,15 @@
 /**
- * SystemUIManager - システムUI管理（通知・モーダル・ダイアログ）
- * 依存: MessageBus
+ * system-ui-manager.js - manager module.
  */
 
 import { MessageBus } from '../core/message-bus.js';
+import { I18n } from '../core/i18n.js';
 
 export class SystemUIManager {
   static notifications = new Map();
   static activeModal = null;
+  static initialized = false;
+  static unsubscribeNotification = null;
   
   static MAX_NOTIFICATIONS = 5;
   static NOTIFICATION_DURATION = {
@@ -24,8 +26,12 @@ export class SystemUIManager {
   // =========================================
   
   static init() {
+    if (this.initialized) {
+      return;
+    }
+
     // 通知購読
-    MessageBus.on('show-notification', (notification) => {
+    this.unsubscribeNotification = MessageBus.on('show-notification', (notification) => {
       this.showNotification(notification);
     });
     
@@ -45,6 +51,7 @@ export class SystemUIManager {
       document.body.appendChild(container);
     }
     
+    this.initialized = true;
     console.log('[SystemUIManager] Initialized');
   }
   
@@ -100,7 +107,7 @@ export class SystemUIManager {
     
     const closeBtn = document.createElement('button');
     closeBtn.className = 'notification__close';
-    closeBtn.textContent = '×';
+    closeBtn.textContent = I18n.t('ui.common.closeSymbol');
     const hideHandler = (e) => {
       e.preventDefault();
       this.hideNotification(notification.id);
@@ -308,7 +315,7 @@ export class SystemUIManager {
     
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'modal__btn';
-    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.textContent = I18n.t('ui.common.cancel');
     cancelBtn.addEventListener('click', () => this.closeModal(null));
     cancelBtn.addEventListener('touchend', (e) => {
       e.preventDefault();
@@ -318,7 +325,7 @@ export class SystemUIManager {
     
     const okBtn = document.createElement('button');
     okBtn.className = 'modal__btn modal__btn--primary';
-    okBtn.textContent = 'OK';
+    okBtn.textContent = I18n.t('ui.common.ok');
     okBtn.addEventListener('click', () => {
       this.closeModal(dialog._input ? dialog._input.value : true);
     });
@@ -348,11 +355,11 @@ export class SystemUIManager {
    * @param {string} title - タイトル
    * @returns {Promise<boolean>}
    */
-  static async confirm(message, title = '確認') {
+  static async confirm(message, title = I18n.t('ui.system.confirmTitle')) {
     const result = await this.showModal({
       title,
       message,
-      buttons: ['OK', 'キャンセル']
+      buttons: [I18n.t('ui.common.ok'), I18n.t('ui.common.cancel')]
     });
     return result === 'OK';
   }
@@ -364,7 +371,7 @@ export class SystemUIManager {
    * @param {string} title - タイトル
    * @returns {Promise<string|null>}
    */
-  static async prompt(message, defaultValue = '', title = '入力') {
+  static async prompt(message, defaultValue = '', title = I18n.t('ui.system.inputTitle')) {
     return await this.showDialog({
       title,
       message,
@@ -380,7 +387,7 @@ export class SystemUIManager {
    * @param {string} title - タイトル
    * @returns {Promise<string|null>}
    */
-  static async select(message, options, title = '選択') {
+  static async select(message, options, title = I18n.t('ui.system.selectTitle')) {
     return await this.showDialog({
       title,
       message,
@@ -437,7 +444,7 @@ export class SystemUIManager {
     if (!items || items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'list-modal__empty';
-      empty.textContent = options.emptyMessage || 'アイテムがありません';
+      empty.textContent = options.emptyMessage || I18n.t('ui.system.noItems');
       container.appendChild(empty);
     } else {
       const list = document.createElement('div');
@@ -529,5 +536,24 @@ export class SystemUIManager {
     }
     
     this.renderListModalContent(container, this.listModalOptions);
+  }
+
+  static destroy() {
+    if (typeof this.unsubscribeNotification === 'function') {
+      this.unsubscribeNotification();
+    }
+    this.unsubscribeNotification = null;
+
+    for (const entry of this.notifications.values()) {
+      clearTimeout(entry.timerId);
+      entry.element.remove();
+    }
+    this.notifications.clear();
+
+    if (this.activeModal) {
+      this.closeModal(null);
+    }
+
+    this.initialized = false;
   }
 }

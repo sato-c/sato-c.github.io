@@ -137,7 +137,12 @@ export class GoogleOAuthAdapter extends AuthAdapter {
     }
     
     this.state.token = accessToken;
-    this.state.expiresAt = Date.now() + (parseInt(expiresIn) * 1000);
+    const expiresSec = Number(expiresIn);
+    if (!Number.isFinite(expiresSec) || expiresSec <= 0) {
+      throw new Error('[GoogleOAuthAdapter] Invalid expires_in');
+    }
+
+    this.state.expiresAt = Date.now() + (expiresSec * 1000);
     
     // URLからハッシュを削除
     history.replaceState(null, '', window.location.pathname + window.location.search);

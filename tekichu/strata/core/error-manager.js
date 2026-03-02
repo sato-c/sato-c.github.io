@@ -1,20 +1,15 @@
 /**
- * ErrorManager - エラー処理統一
- * 依存: NotificationManager
+ * ErrorManager - centralized error handling and user messaging.
  */
 
 import { NotificationManager } from './notification-manager.js';
+import { I18n } from './i18n.js';
 
 export class ErrorManager {
-  /**
-   * エラーハンドリング
-   * @param {Error} error - エラーオブジェクト
-   * @param {Object} context - コンテキスト情報
-   */
   static handle(error, context = {}) {
     try {
       this.logError(error, context);
-      
+
       if (this.shouldNotifyUser(error)) {
         NotificationManager.error(this.getUserMessage(error));
       }
@@ -22,12 +17,7 @@ export class ErrorManager {
       console.error('[ErrorManager] Critical error:', handleError);
     }
   }
-  
-  /**
-   * エラーログ記録
-   * @param {Error} error - エラーオブジェクト
-   * @param {Object} context - コンテキスト情報
-   */
+
   static logError(error, context) {
     console.error('[Error]', {
       message: error.message,
@@ -37,30 +27,20 @@ export class ErrorManager {
       timestamp: new Date().toISOString()
     });
   }
-  
-  /**
-   * ユーザー通知判断
-   * @param {Error} error - エラーオブジェクト
-   * @returns {boolean}
-   */
+
   static shouldNotifyUser(error) {
-    // AbortErrorは通知不要
     if (error.name === 'AbortError') return false;
     return true;
   }
-  
-  /**
-   * ユーザー向けメッセージ取得
-   * @param {Error} error - エラーオブジェクト
-   * @returns {string}
-   */
+
   static getUserMessage(error) {
     const messages = {
-      'NetworkError': 'ネットワークエラーが発生しました',
-      'TypeError': '予期しないエラーが発生しました',
-      'AuthError': '認証に失敗しました',
-      'QuotaExceededError': 'ストレージ容量が不足しています'
+      NetworkError: I18n.t('error.network'),
+      TypeError: I18n.t('error.type'),
+      AuthError: I18n.t('error.auth'),
+      QuotaExceededError: I18n.t('error.quotaExceeded')
     };
-    return messages[error.name] || 'エラーが発生しました';
+    return messages[error.name] || I18n.t('common.unknownError');
   }
 }
+

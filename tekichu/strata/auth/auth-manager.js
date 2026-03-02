@@ -1,114 +1,79 @@
 /**
- * AuthManager - 認証管理
- * 依存: AuthAdapter, NotificationManager, MessageBus
- * 
- * Adapterを外部から注入することで、Google OAuth以外の認証にも対応可能。
+ * auth-manager.js - manager module.
  */
 
 import { NotificationManager } from '../core/notification-manager.js';
 import { MessageBus } from '../core/message-bus.js';
+import { I18n } from '../core/i18n.js';
 
 export class AuthManager {
   static adapter = null;
-  
-  // =========================================
-  // Adapter設定
-  // =========================================
-  
-  /**
-   * Adapterをセット（init前に呼ぶ）
-   * @param {AuthAdapter} adapter
-   */
+  static initialized = false;
+
   static setAdapter(adapter) {
     this.adapter = adapter;
   }
-  
-  // =========================================
-  // 初期化
-  // =========================================
-  
-  /**
-   * 初期化
-   */
+
   static async init() {
+    if (this.initialized) {
+      return;
+    }
+
     if (!this.adapter) {
       throw new Error('[AuthManager] Adapter not set. Call setAdapter() first.');
     }
-    
-    // Adapter初期化（保存済みトークン復元）
+
     this.adapter.init();
-    
-    // コールバック処理（OAuth redirect後など）
     const callbackResult = await this.adapter.handleCallback();
-    
+
     if (callbackResult) {
-      // 認証成功
-      NotificationManager.success('ログインしました');
+      NotificationManager.success(I18n.t('auth.loginSuccess'));
       MessageBus.emit('auth-changed', { authenticated: true });
     }
-    
-    console.log('[AuthManager] Initialized', 
-      this.isAuthenticated() ? '(logged in)' : '(not logged in)');
+
+    this.initialized = true;
+    console.log(
+      '[AuthManager] Initialized',
+      this.isAuthenticated() ? '(logged in)' : '(not logged in)'
+    );
   }
-  
-  // =========================================
-  // 認証操作
-  // =========================================
-  
-  /**
-   * ログイン
-   */
+
   static login() {
     if (!this.adapter) {
-      NotificationManager.error('認証が設定されていません');
+      NotificationManager.error(I18n.t('auth.adapterNotConfigured'));
       return;
     }
-    
+
     this.adapter.login();
   }
-  
-  /**
-   * ログアウト
-   */
+
   static logout() {
     if (!this.adapter) {
       return;
     }
-    
+
     this.adapter.logout();
-    
     MessageBus.emit('auth-changed', { authenticated: false });
-    NotificationManager.info('ログアウトしました');
+    NotificationManager.info(I18n.t('auth.logoutSuccess'));
   }
-  
-  // =========================================
-  // 状態取得（Adapterに委譲）
-  // =========================================
-  
-  /**
-   * トークン取得
-   * @returns {string|null}
-   */
+
   static getToken() {
     if (!this.adapter) return null;
     return this.adapter.getToken();
   }
-  
-  /**
-   * 認証済みか判定
-   * @returns {boolean}
-   */
+
   static isAuthenticated() {
     if (!this.adapter) return false;
     return this.adapter.isAuthenticated();
   }
-  
-  /**
-   * ユーザー情報取得
-   * @returns {Object|null}
-   */
+
   static getUserInfo() {
     if (!this.adapter) return null;
     return this.adapter.getUserInfo();
   }
+
+  static destroy() {
+    this.initialized = false;
+  }
 }
+
