@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>RETROVOX</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Courier New', monospace;
+}
+</style>
+</head>
+<body>
+<div id="game-container"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+<script>
+// ===== RETROVOX / STRATOVOX tribute =====
+
+const W = 320, H = 480;
+
+// 音声合成
+function speak(text, rate = 0.7, pitch = 0.5) {
+  if (!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'ja-JP';
+  u.rate = rate;
+  u.pitch = pitch;
+  u.volume = 0.8;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
+// ===== TITLE =====
+class TitleScene extends Phaser.Scene {
+  constructor() { super('Title'); }
+  create() {
+    this.add.rectangle(W/2, H/2, W, H, 0x000000);
+    for (let i = 0; i < 80; i++) {
+      this.add.rectangle(
+        Phaser.Math.Between(0,W), Phaser.Math.Between(0,H),
+        1, 1,
+        Phaser.Utils.Array.GetRandom([0xff0000,0x00ff00,0x0000ff,0xffff00,0xff00ff])
+      );
+    }
+
+    const t = this.add.text(W/2, H/2-80, 'RETROVOX', {
+      fontSize: '36px', fontFamily: 'Courier New',
+      color: '#00ff00', stroke: '#ffff00', strokeThickness: 3,
+      align: 'center'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, H/2+10, '← → : MOVE\nSPACE / Z : SHOOT', {
+      fontSize: '13px', fontFamily: 'Courier New',
+      color: '#888888', align: 'center'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, H/2+80, '- STRATOVOX TRIBUTE -', {
+      fontSize: '12px', fontFamily: 'Courier New', color: '#ff4400'
+    }).setOrigin(0.5);
+
+    const blink = this.add.text(W/2, H/2+120, 'PRESS SPACE', {
+      fontSize: '16px', fontFamily: 'Courier New', color: '#ffff00'
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: blink, alpha: 0, duration: 500, yoyo: true, repeat: -1 });
+
+    this.tweens.addCounter({
+      from:0, to:360, duration:2000, repeat:-1,
+      onUpdate: tw => {
+        const c = Phaser.Display.Color.HSLToColor(tw.getValue()/360,1,0.55);
+        t.setColor('#'+c.color.toString(16).padStart(6,'0'));
+      }
+    });
+
+    this.input.keyboard.once('keydown-SPACE', () => {
+      speak('たすけてー', 0.6, 0.3);
+      this.time.delayedCall(800, () => this.scene.start('Game'));
+    });
+  }
+}
+
+// ===== GAME =====
+class GameScene extends Phaser.Scene {
+  constructor() { super('Game'); }
+
+  create() {
+    this.score = 0;
+    this.lives = 3;
+    this.wave  = 1;
+    this.gameOver = false;
+    this.playerAlive = true;
+    this.respawnTimer = 0;
+    this.shootCool = 0;
+    this.waveClearing = false;
+
+    // 右側の壁の宇宙人（人質）8体
+    this.hostages = [];
+    this._initHostages();
+
+    // 敵グループ
+    this.spiders   = [];  // 下から来る蜘蛛
+    this.ufos      = [];  // 上から降りてくるUFO
+    this.bullets   = [];  // 自機弾
+    this.eBullets  = [];  // 敵弾
+    this.particles = [];
+
+    // 自機
+    this.playerX = W / 2;
+    this.playerVX = 0;
+
+    // 地面Y
+    this.groundY = H - 60;
+
+    // グラフィック
+    this.gBg      = this.add.graphics().setDepth(0);
+    this.gEntities= this.add.graphics().setDepth(5);
+    this.gPlayer  = this.add.graphics().setDepth(10);
+    this.gBullets = this.add.graphics().setDepth(8);
+    this.gParticles= this.add.graphics().setDepth(12);
+    this.gHUD     = this.add.graphics().setDepth(20);
+
+    this.txtScore  = this.add.text(8, 4, 'SCORE=00000', {fontSize:'11px',fontFamily:'Courier New',color:'#ff4400'}).setDepth(25);
+    this.txtHiScore= this.add.text(W/2, 4, 'HIGH SCORE\n00000', {fontSize:'11px',fontFamily:'Courier New',color:'#ff4400',align:'center'}).setOrigin(0.5,0).setDepth(25);
+    this.txtLives  = this.add.text(8, H-20, '', {fontSize:'11px',fontFamily:'Courier New',color:'#00ffff'}).setDepth(25);
+    this.txtVoice  = this.add.text(W/2, H/2, '', {fontSize:'18px',fontFamily:'Courier New',color:'#ffff00',stroke:'#000',strokeThickness:3}).setOrigin(0.5).setDepth(30);
+    this.voiceTimer = 0;
+
+    // スパイダーとUFOをウェーブ分スポーン
+    this._spawnWave();
+
+    this.keys = this.input.keyboard.addKeys({
+      left:  Phaser.Input.Keyboard.KeyCodes.LEFT,
+      right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      shoot: Phaser.Input.Keyboard.KeyCodes.Z,
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+    });
+  }
+
+  _initHostages() {
+    this.hostages = [];
+    const wallX = W - 24;
+    for (let i = 0; i < 8; i++) {
+      this.hostages.push({
+        x: wallX,
+        y: 60 + i * 38,
+        alive: true,
+        carried: false,
+        carriedBy: null,
+        falling: false,
+        vy: 0,
+      });
+    }
+  }
+
+  _spawnWave() {
+    this.waveClearing = false;
+    const numSpiders = 3 + this.wave;
+    const numUfos    = 2 + this.wave;
+
+    // 蜘蛛：画面上部からスタート
+    for (let i = 0; i < numSpiders; i++) {
+      this.spiders.push({
+        x: Phaser.Math.Between(30, W - 60),
+        y: Phaser.Math.Between(60, 160),
+        vx: Phaser.Math.FloatBetween(-1.5, 1.5),
+        vy: Phaser.Math.FloatBetween(0.3, 0.8),
+        alive: true,
+        shootCool: Phaser.Math.Between(150, 280),
+        legPhase: 0,
+      });
+    }
+
+    // UFO：上から降りてきて人質を拉致
+    for (let i = 0; i < numUfos; i++) {
+      this.ufos.push({
+        x: Phaser.Math.Between(30, W - 60),
+        y: Phaser.Math.Between(-80, -20),
+        vx: Phaser.Math.FloatBetween(-1.2, 1.2),
+        vy: Phaser.Math.FloatBetween(0.5, 1.2),
+        alive: true,
+        target: null,
+        carrying: false,
+        shootCool: Phaser.Math.Between(80, 200),
+        state: 'descend', // descend → grab → ascend
+      });
+    }
+  }
+
+  _showVoice(text) {
+    this.txtVoice.setText(text);
+    this.voiceTimer = 90;
+    speak(text, 0.6, 0.3);
+  }
+
+  _spawnExpl(x, y, big) {
+    const n = big ? 20 : 10;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = Phaser.Math.FloatBetween(1, big?5:3);
+      this.particles.push({
+        x, y,
+        vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+        life: big?40:25, maxLife: big?40:25,
+        color: Phaser.Utils.Array.GetRandom([0xffffff,0xff4400,0xffff00,0xff8800]),
+        size: Phaser.Math.Between(1,big?4:2),
+      });
+    }
+  }
+
+  _fireBullet() {
+    // 自機の上端中央から発射（px = playerX+12, 上端 = groundY-20-22）
+    this.bullets.push({ x: this.playerX + 12, y: this.groundY - 42, vy: -10, alive: true });
+  }
+
+  update() {
+    if (this.gameOver) return;
+
+    this.shootCool--;
+    this.voiceTimer--;
+    if (this.voiceTimer <= 0) this.txtVoice.setText('');
+
+    // ---- Player ----
+    if (this.playerAlive) {
+      if (this.keys.left.isDown)  this.playerVX = Math.max(this.playerVX - 0.8, -5);
+      if (this.keys.right.isDown) this.playerVX = Math.min(this.playerVX + 0.8, 5);
+      if (!this.keys.left.isDown && !this.keys.right.isDown) this.playerVX *= 0.8;
+      this.playerX = Phaser.Math.Clamp(this.playerX + this.playerVX, 20, W - 60);
+
+      if ((this.keys.shoot.isDown || this.keys.space.isDown) && this.shootCool <= 0) {
+        this._fireBullet();
+        this.shootCool = 18;
+      }
+    } else {
+      this.respawnTimer--;
+      if (this.respawnTimer <= 0 && this.lives > 0) {
+        this.playerX = W / 2;
+        this.playerVX = 0;
+        this.playerAlive = true;
+      }
+    }
+
+    // ---- UFOs ----
+    this.ufos.forEach(u => {
+      if (!u.alive) return;
+
+      if (u.state === 'descend') {
+        // 人質を狙って降りる
+        if (!u.target) {
+          const alive = this.hostages.filter(h => h.alive && !h.carried);
+          if (alive.length > 0) u.target = Phaser.Utils.Array.GetRandom(alive);
+        }
+        if (u.target) {
+          const dx = u.target.x - u.x;
+          const dy = u.target.y - u.y;
+          const dist = Math.sqrt(dx*dx+dy*dy);
+          if (dist < 10) {
+            u.state = 'grab';
+            u.target.carried = true;
+            u.target.carriedBy = u;
+          } else {
+            u.x += (dx/dist) * 1.5;
+            u.y += (dy/dist) * 1.5;
+          }
+        } else {
+          u.y += u.vy;
+          u.x += u.vx;
+          if (u.x < 20 || u.x > W-40) u.vx *= -1;
+          if (u.y > this.groundY - 20) u.vy *= -1;
+        }
+      } else if (u.state === 'grab') {
+        // 上まで上昇（逃走中は縦移動しない）
+        if (!u.escaping) u.y -= 1.8;
+        if (u.target) { u.target.x = u.x; u.target.y = u.y + 18; }
+        if (u.y < 30 && !u.escaping) {
+          // 上端に達したら横に逃げる
+          u.escaping = true;
+          u.escapeVX = Math.random() > 0.5 ? 3.5 : -3.5;
+        }
+        if (u.escaping) {
+          u.x += u.escapeVX;
+          // 縦は動かない（水平逃走）
+          if (u.target) { u.target.x = u.x; u.target.y = u.y + 18; }
+        }
+        if (u.x < -40 || u.x > W + 40) {
+          // 画面外に逃げ切り
+          if (u.target) { u.target.alive = false; }
+          u.alive = false;
+          this._showVoice('たすけてー');
+          if (this.hostages.filter(h=>h.alive).length === 0) {
+            this._triggerGameOver();
+          }
+        }
+      }
+
+      // 射撃
+      u.shootCool--;
+      if (u.shootCool <= 0 && this.playerAlive) {
+        const dx = this.playerX + 12 - u.x;
+        const dy = this.groundY - 20 - u.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if (dist < 200) {
+          const spd = 4;
+          this.eBullets.push({ x:u.x, y:u.y, vx:(dx/dist)*spd, vy:(dy/dist)*spd, alive:true });
+        }
+        u.shootCool = Phaser.Math.Between(100,220);
+      }
+    });
+
+    // ---- Spiders ----
+    this.spiders.forEach(s => {
+      if (!s.alive) return;
+      s.x += s.vx;
+      s.y += s.vy;
+      s.legPhase++;
+      if (s.x < 15 || s.x > W-55) s.vx *= -1;
+      if (s.y < 80) s.vy = Math.abs(s.vy);
+      if (s.y > this.groundY - 5) s.vy = -Math.abs(s.vy);
+
+      // 射撃
+      s.shootCool--;
+      if (s.shootCool <= 0 && this.playerAlive) {
+        const dx = this.playerX+12 - s.x;
+        const dy = this.groundY-20 - s.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if (dist < 180) {
+          const spd = 3.5;
+          this.eBullets.push({ x:s.x, y:s.y, vx:(dx/dist)*spd, vy:(dy/dist)*spd, alive:true });
+        }
+        s.shootCool = Phaser.Math.Between(80,200);
+      }
+
+      // 自機衝突
+      if (this.playerAlive) {
+        if (Math.abs(s.x-(this.playerX+12))<16 && Math.abs(s.y-(this.groundY-20))<16) {
+          this._killPlayer();
+        }
+      }
+    });
+
+    // ---- Player bullets ----
+    this.bullets.forEach(b => {
+      if (!b.alive) return;
+      b.y += b.vy;
+      if (b.y < 0) { b.alive = false; return; }
+
+      // Hit UFO
+      this.ufos.forEach(u => {
+        if (!u.alive || !b.alive) return;
+        if (Math.abs(b.x-u.x)<14 && Math.abs(b.y-u.y)<14) {
+          if (u.carrying && u.target) {
+            u.target.carried = false;
+            u.target.carriedBy = null;
+            u.target.falling = true;
+            u.target.vy = 2;
+          }
+          this._spawnExpl(u.x, u.y, true);
+          u.alive = false;
+          b.alive = false;
+          // 人質を運んでいた場合は1000点、通常は100点
+          if (u.state === 'grab') {
+            this.score += 1000;
+            this._showVoice('せんてん');
+            if (u.target) {
+              u.target.carried = false;
+              u.target.carriedBy = null;
+              u.target.falling = true;
+              u.target.vy = 2;
+            }
+          } else {
+            this.score += 100;
+            this._showVoice('ひゃくてん');
+          }
+        }
+      });
+      if (!b.alive) return;
+
+      // Hit spider
+      this.spiders.forEach(s => {
+        if (!s.alive || !b.alive) return;
+        if (Math.abs(b.x-s.x)<14 && Math.abs(b.y-s.y)<14) {
+          this._spawnExpl(s.x, s.y, false);
+          s.alive = false;
+          b.alive = false;
+          this.score += 50;
+        }
+      });
+    });
+
+    // ---- Enemy bullets ----
+    this.eBullets.forEach(b => {
+      if (!b.alive) return;
+      b.x += b.vx; b.y += b.vy;
+      if (b.x<0||b.x>W||b.y<0||b.y>H) { b.alive=false; return; }
+      if (this.playerAlive) {
+        if (Math.abs(b.x-(this.playerX+12))<10 && Math.abs(b.y-(this.groundY-20))<10) {
+          this._killPlayer();
+          b.alive = false;
+        }
+      }
+    });
+
+    // ---- Falling hostages ----
+    this.hostages.forEach(h => {
+      if (!h.alive || !h.falling) return;
+      h.vy += 0.2;
+      h.y += h.vy;
+      // 自機キャッチ
+      if (this.playerAlive && Math.abs(h.x-(this.playerX+12))<20 && Math.abs(h.y-(this.groundY-20))<20) {
+        h.falling = false;
+        h.y = this.groundY - 8;
+        this.score += 500;
+        this._showVoice('たすかった');
+      }
+      // 地面に落下
+      if (h.y >= this.groundY - 8) {
+        h.falling = false;
+        h.y = this.groundY - 8;
+        this.score += 200;
+      }
+    });
+
+    // ---- Particles ----
+    this.particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      p.vx *= 0.92; p.vy *= 0.92;
+      p.life--;
+    });
+    this.particles = this.particles.filter(p=>p.life>0);
+
+    // Cleanup
+    this.bullets  = this.bullets.filter(b=>b.alive);
+    this.eBullets = this.eBullets.filter(b=>b.alive);
+    this.ufos     = this.ufos.filter(u=>u.alive);
+    this.spiders  = this.spiders.filter(s=>s.alive);
+
+    // Wave clear?
+    if (!this.waveClearing && this.ufos.length===0 && this.spiders.length===0) {
+      this.waveClearing = true;
+      this.score += 1000;
+      this._showVoice('やったー');
+      this.time.delayedCall(2000, () => {
+        this.wave++;
+        this._spawnWave();
+      });
+    }
+
+    this._draw();
+    this._drawHUD();
+  }
+
+  _killPlayer() {
+    if (!this.playerAlive) return;
+    this._spawnExpl(this.playerX+12, this.groundY-20, true);
+    this.playerAlive = false;
+    this.lives--;
+    this.respawnTimer = 120;
+    this._showVoice('やられた');
+    this.cameras.main.shake(200, 0.01);
+    if (this.lives <= 0) this._triggerGameOver();
+  }
+
+  _triggerGameOver() {
+    this.gameOver = true;
+    speak('げーむおーばー', 0.5, 0.2);
+    const g = this.add.graphics().setDepth(50);
+    g.fillStyle(0x000000, 0.85);
+    g.fillRect(W/2-120, H/2-50, 240, 100);
+    this.add.text(W/2, H/2-25,'GAME OVER',{fontSize:'32px',fontFamily:'Courier New',color:'#ff4400',stroke:'#ffff00',strokeThickness:3}).setOrigin(0.5).setDepth(51);
+    this.add.text(W/2, H/2+10,'SCORE: '+this.score,{fontSize:'16px',fontFamily:'Courier New',color:'#00ff44'}).setOrigin(0.5).setDepth(51);
+    const b = this.add.text(W/2,H/2+38,'PRESS SPACE',{fontSize:'13px',fontFamily:'Courier New',color:'#ffff00'}).setOrigin(0.5).setDepth(51);
+    this.tweens.add({targets:b,alpha:0,duration:400,yoyo:true,repeat:-1});
+    this.input.keyboard.once('keydown-SPACE',()=>this.scene.start('Title'));
+  }
+
+  _draw() {
+    const g = this.gBg;
+    g.clear();
+
+    // 背景（黒＋星）
+    g.fillStyle(0x000000,1);
+    g.fillRect(0,0,W,H);
+    // カラフルな星
+    for (let i=0; i<3; i++) {
+      const colors = [0xff0000,0x00ff00,0x0000ff,0xffff00,0xff00ff,0x00ffff];
+      g.fillStyle(Phaser.Utils.Array.GetRandom(colors),1);
+      g.fillRect(Phaser.Math.Between(0,W), Phaser.Math.Between(0,this.groundY), 1,1);
+    }
+
+    // 右側の緑の壁
+    g.fillStyle(0x00aa00,1);
+    g.fillRect(W-20, 40, 20, this.groundY-40);
+    g.fillStyle(0x00ff44,1);
+    g.lineStyle(1,0x00ff44,1);
+    g.strokeRect(W-20,40,20,this.groundY-40);
+
+    // 地面
+    g.fillStyle(0x0044aa,1);
+    g.fillRect(0, this.groundY, W, H-this.groundY);
+    g.lineStyle(2,0x00aaff,1);
+    g.lineBetween(0,this.groundY,W,this.groundY);
+
+    const ge = this.gEntities;
+    ge.clear();
+
+    // 人質（右壁に並ぶ）
+    this.hostages.forEach(h => {
+      if (!h.alive) return;
+      const col = h.carried ? 0xff8800 : 0xff4444;
+      ge.fillStyle(col,1);
+      // 体
+      ge.fillRect(h.x-5, h.y-10, 10,10);
+      // 頭
+      ge.fillCircle(h.x, h.y-14, 5);
+      // 腕を上げてるポーズ
+      ge.lineStyle(2,col,1);
+      ge.lineBetween(h.x-5,h.y-8,h.x-10,h.y-14);
+      ge.lineBetween(h.x+5,h.y-8,h.x+10,h.y-14);
+    });
+
+    // UFO
+    this.ufos.forEach(u => {
+      if (!u.alive) return;
+      ge.fillStyle(0xff00ff,1);
+      ge.fillEllipse(u.x,u.y,28,12);
+      ge.fillStyle(0xaa00aa,1);
+      ge.fillEllipse(u.x,u.y-6,14,9);
+      ge.fillStyle(0xff88ff,0.6);
+      ge.fillCircle(u.x,u.y-7,4);
+      // ビーム（grab中）
+      if (u.state==='grab' || u.state==='descend') {
+        ge.lineStyle(1,0xffff00,0.4);
+        ge.lineBetween(u.x-6,u.y+6,u.x-10,u.y+20);
+        ge.lineBetween(u.x+6,u.y+6,u.x+10,u.y+20);
+      }
+    });
+
+    // 蜘蛛
+    this.spiders.forEach(s => {
+      if (!s.alive) return;
+      const legOff = Math.sin(s.legPhase*0.3)*3;
+      ge.fillStyle(0x00ff00,1);
+      // 胴体
+      ge.fillEllipse(s.x,s.y,18,12);
+      ge.fillCircle(s.x,s.y-8,6);
+      // 足
+      ge.lineStyle(2,0x00ff00,1);
+      ge.lineBetween(s.x-9,s.y,s.x-18,s.y-6+legOff);
+      ge.lineBetween(s.x-9,s.y,s.x-18,s.y+legOff);
+      ge.lineBetween(s.x-9,s.y,s.x-18,s.y+6+legOff);
+      ge.lineBetween(s.x+9,s.y,s.x+18,s.y-6-legOff);
+      ge.lineBetween(s.x+9,s.y,s.x+18,s.y-legOff);
+      ge.lineBetween(s.x+9,s.y,s.x+18,s.y+6-legOff);
+      // 目
+      ge.fillStyle(0xff0000,1);
+      ge.fillCircle(s.x-2,s.y-9,2);
+      ge.fillCircle(s.x+2,s.y-9,2);
+    });
+
+    // 自機
+    if (this.playerAlive) {
+      const gp = this.gPlayer;
+      gp.clear();
+      const px = this.playerX + 12, py = this.groundY-20;
+      gp.fillStyle(0x00ffff,1);
+      // 機体（上向き）
+      gp.fillTriangle(px, py-22, px-10, py+8, px+10, py+8);
+      gp.fillStyle(0x006688,1);
+      gp.fillRect(px-6, py-4, 12, 16);
+      // エンジン炎（下向き）
+      gp.fillStyle(0xff8800,1);
+      gp.fillTriangle(px-4, py+8, px+4, py+8, px, py+18);
+      // キャノピー
+      gp.fillStyle(0x88ffff,0.8);
+      gp.fillCircle(px, py-8, 4);
+    }
+
+    // 弾
+    const gb = this.gBullets;
+    gb.clear();
+    this.bullets.forEach(b => {
+      gb.fillStyle(0xffff00,1);
+      gb.fillRect(b.x-2,b.y-6,4,12);
+    });
+    this.eBullets.forEach(b => {
+      gb.fillStyle(0xff6600,1);
+      gb.fillCircle(b.x,b.y,3);
+    });
+
+    // パーティクル
+    const gpar = this.gParticles;
+    gpar.clear();
+    this.particles.forEach(p => {
+      const a = p.life/p.maxLife;
+      gpar.fillStyle(p.color,a);
+      gpar.fillCircle(p.x,p.y,p.size);
+    });
+  }
+
+  _drawHUD() {
+    this.txtScore.setText('SCORE1=' + String(this.score).padStart(5,'0'));
+    this.txtLives.setText('♦'.repeat(Math.max(0,this.lives)) + ' WAVE:'+this.wave);
+  }
+}
+
+const config = {
+  type: Phaser.AUTO,
+  width: W, height: H,
+  backgroundColor: '#000000',
+  parent: 'game-container',
+  scene: [TitleScene, GameScene],
+  render: { antialias: false },
+};
+new Phaser.Game(config);
+</script>
+</body>
+</html>

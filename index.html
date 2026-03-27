@@ -1,141 +1,378 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monomane Game on Pyxel</title>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R SERIES — retro arcade tributes</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1208;
+    --paper: #f5f0e8;
+    --paper2: #ede8d8;
+    --red: #c0392b;
+    --yellow: #e8c840;
+    --blue: #2c4a7c;
+    --stamp: #8b4513;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Caveat', cursive;
+    min-height: 100vh;
+    padding: 24px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* 紙のテクスチャ感 */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 28px,
+        rgba(0,0,0,0.04) 28px,
+        rgba(0,0,0,0.04) 29px
+      );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ノイズグレイン */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ヘッダー */
+  header {
+    text-align: center;
+    padding: 32px 0 24px;
+    position: relative;
+  }
+
+  .header-tape {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-1deg);
+    background: rgba(232, 200, 64, 0.7);
+    width: 200px;
+    height: 28px;
+    z-index: -1;
+  }
+
+  .site-title {
+    font-family: 'Special Elite', monospace;
+    font-size: clamp(48px, 10vw, 80px);
+    letter-spacing: -2px;
+    line-height: 1;
+    position: relative;
+    display: inline-block;
+  }
+
+  .site-title .r {
+    color: var(--red);
+    font-size: 1.2em;
+    display: inline-block;
+    transform: rotate(-3deg);
+    margin-right: -4px;
+  }
+
+  .site-subtitle {
+    font-size: 18px;
+    color: #666;
+    margin-top: 8px;
+    transform: rotate(0.5deg);
+    display: inline-block;
+  }
+
+  /* 手書き下線 */
+  .underline-squiggle {
+    display: block;
+    margin: 8px auto 0;
+    width: 180px;
+    height: 8px;
+  }
+
+  /* スタンプ風テキスト */
+  .stamp {
+    font-family: 'Special Elite', monospace;
+    color: var(--stamp);
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    opacity: 0.6;
+    border: 2px solid var(--stamp);
+    display: inline-block;
+    padding: 2px 8px;
+    transform: rotate(-2deg);
+    margin-top: 12px;
+  }
+
+  /* ゲームカード */
+  .games {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    margin-top: 40px;
+  }
+
+  .game-card {
+    background: white;
+    border: 2px solid var(--ink);
+    padding: 24px 28px;
+    position: relative;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: transform 0.15s ease;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+
+  .game-card:nth-child(1) { transform: rotate(-0.8deg); }
+  .game-card:nth-child(2) { transform: rotate(0.5deg); }
+  .game-card:nth-child(3) { transform: rotate(-0.3deg); }
+
+  .game-card:hover {
+    transform: rotate(0deg) translateY(-3px) !important;
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+
+  /* コーナーテープ */
+  .game-card::before,
+  .game-card::after {
+    content: '';
+    position: absolute;
+    width: 32px;
+    height: 16px;
+    background: rgba(232, 200, 64, 0.75);
+    transform: rotate(-45deg);
+  }
+  .game-card::before { top: -6px; left: 12px; }
+  .game-card::after  { top: -6px; right: 12px; }
+
+  .card-number {
+    font-family: 'Special Elite', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #999;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+
+  .card-title {
+    font-family: 'Special Elite', monospace;
+    font-size: clamp(36px, 8vw, 56px);
+    line-height: 1;
+    letter-spacing: -1px;
+  }
+
+  .card-title .initial {
+    color: var(--red);
+    font-size: 1.1em;
+  }
+
+  .card-origin {
+    font-size: 14px;
+    color: #888;
+    margin-top: 4px;
+    font-style: italic;
+  }
+
+  .card-desc {
+    font-size: 20px;
+    margin-top: 12px;
+    line-height: 1.5;
+    color: #333;
+  }
+
+  .card-play {
+    display: inline-block;
+    margin-top: 16px;
+    font-family: 'Special Elite', monospace;
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 2px;
+  }
+
+  .card-play::after {
+    content: ' →';
+  }
+
+  /* カラーアクセント帯 */
+  .accent-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+  }
+  .game-card:nth-child(1) .accent-bar { background: var(--red); }
+  .game-card:nth-child(2) .accent-bar { background: var(--blue); }
+  .game-card:nth-child(3) .accent-bar { background: var(--stamp); }
+
+  /* 落書き風メモ */
+  .memo {
+    font-size: 16px;
+    color: var(--blue);
+    transform: rotate(-1.5deg);
+    display: inline-block;
+    margin-top: 8px;
+    position: relative;
+  }
+  .memo::before {
+    content: '✎ ';
+    font-size: 14px;
+  }
+
+  /* フッター */
+  footer {
+    text-align: center;
+    margin-top: 60px;
+    padding-bottom: 40px;
+    position: relative;
+  }
+
+  .footer-line {
+    border: none;
+    border-top: 2px dashed #ccc;
+    margin-bottom: 20px;
+  }
+
+  .footer-text {
+    font-size: 15px;
+    color: #aaa;
+  }
+
+  .footer-stamp {
+    font-family: 'Special Elite', monospace;
+    font-size: 11px;
+    color: var(--red);
+    opacity: 0.5;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-top: 8px;
+    display: block;
+    transform: rotate(1deg);
+  }
+
+  /* 手描き風アスタリスク装飾 */
+  .doodle {
+    text-align: center;
+    font-size: 20px;
+    color: #ddd;
+    margin: 8px 0;
+    letter-spacing: 12px;
+  }
+
+  /* アニメ */
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(16px) rotate(var(--r, 0deg)); }
+    to   { opacity: 1; transform: translateY(0)    rotate(var(--r, 0deg)); }
+  }
+
+  .game-card {
+    opacity: 0;
+    animation: fadeSlide 0.5s ease forwards;
+  }
+  .game-card:nth-child(1) { --r: -0.8deg; animation-delay: 0.1s; }
+  .game-card:nth-child(2) { --r:  0.5deg; animation-delay: 0.25s; }
+  .game-card:nth-child(3) { --r: -0.3deg; animation-delay: 0.4s; }
+
+  header {
+    opacity: 0;
+    animation: fadeSlide 0.4s ease 0s forwards;
+    --r: 0deg;
+  }
+</style>
 </head>
 <body>
-    <header class="navbar">
-        <div class="container nav-container">
-            <div class="logo">
-                <i class="fas fa-gamepad"></i>
-                <span>Monomane Game on Pyxel</span>
-            </div>
-            <nav>
-                <ul class="nav-links">
-                    <li><a href="index.html">ホーム</a></li>
-                    <li><a href="pk.html">ゲーム</a></li>
-                    <li><a href="pk_prompt.html">プロンプト</a></li>
-                    <li>
-                        <button class="theme-toggle" id="theme-toggle">
-                            <i class="fas fa-moon"></i>
-                        </button>
-                    </li>
-                </ul>
-            </nav>
-        </div>
-    </header>
+<div class="container">
 
-    <section class="hero">
-        <div class="container">
-            <h1>モダンなレトロゲーム開発</h1>
-            <p>Pyxelを使って、レトロスタイルのゲームを簡単に作成できます。ATARIのディフェンダーのような懐かしいゲームを現代に蘇らせましょう。</p>
-            <div class="hero-buttons">
-                <a href="pk.html" class="btn btn-primary">ゲームをプレイ</a>
-                <a href="pk_prompt.html" class="btn btn-outline">プロンプトを見る</a>
-            </div>
-        </div>
-    </section>
+  <header>
+    <div class="header-tape"></div>
+    <div class="site-title"><span class="r">R</span> SERIES</div>
+    <div class="site-subtitle">retro arcade tributes</div>
+    <svg class="underline-squiggle" viewBox="0 0 180 8">
+      <path d="M0,4 Q20,0 40,4 Q60,8 80,4 Q100,0 120,4 Q140,8 160,4 Q170,2 180,4"
+            stroke="#1a1208" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div class="doodle">✦ ✦ ✦</div>
+    <span class="stamp">arcade · browser · free</span>
+  </header>
 
-    <section class="section">
-        <div class="container">
-            <h2 class="section-title">ゲームコレクション</h2>
-            <div class="cards">
-                <div class="card">
-                    <div class="card-image">
-                        <img src="pk_prompt.png" alt="ATARIディフェンダー風ゲーム">
-                    </div>
-                    <div class="card-content">
-                        <h3>ATARI ディフェンダー風ゲーム</h3>
-                        <p>80年代の名作アーケードゲーム「ディフェンダー」にインスパイアされた横スクロールシューティングゲームです。レトロなピクセルアートと効果音を楽しめます。</p>
-                        <div class="card-actions">
-                            <a href="pk.html" class="btn btn-primary"><i class="fas fa-gamepad"></i> ゲームをプレイ</a>
-                            <a href="pk_prompt.html" class="btn btn-outline-primary"><i class="fas fa-code"></i> プロンプトとコード</a>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-image">
-                        <img src="holder.png" alt="Pyxelデモゲーム">
-                    </div>
-                    <div class="card-content">
-                        <h3>Pyxel デモゲーム</h3>
-                        <p>Pyxelエンジンの機能を紹介するデモゲームです。シンプルでありながら、Pyxelの可能性を示す様々な機能を実装しています。</p>
-                        <div class="card-actions">
-                            <a href="#" class="btn btn-primary"><i class="fas fa-gamepad"></i> ゲームをプレイ</a>
-                            <a href="#" class="btn btn-outline-primary"><i class="fas fa-code"></i> プロンプトとコード</a>
-                        </div>
-                    </div>
-                </div>
-                <div class="card coming-soon">
-                    <div class="card-image">
-                        <img src="holder.png" alt="近日公開">
-                        <div class="coming-soon-label">近日公開</div>
-                    </div>
-                    <div class="card-content">
-                        <h3>新作ゲーム（開発中）</h3>
-                        <p>現在開発中の新作レトロスタイルゲームです。AI生成プロンプトとPyxelエンジンを組み合わせた新しい体験をお楽しみに。</p>
-                        <div class="card-actions">
-                            <span class="btn btn-disabled"><i class="fas fa-hourglass-half"></i> 開発中</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
+  <div class="games">
 
-    <section class="section">
-        <div class="container">
-            <h2 class="section-title">プロジェクト概要</h2>
-            <div class="code-section">
-                <h3>プロジェクトの目標</h3>
-                <p>このプロジェクトでは、Pyxelを使用して昔のATARIのディフェンダーに似たゲームを作成しています。レトロゲームの魅力を現代に再現することを目指しています。</p>
-                <h3>開発の課題</h3>
-                <p>開発過程で直面した主な課題：</p>
-                <ul>
-                    <li>キャラクターの表示に関する問題</li>
-                    <li>サウンド関連の非推奨APIの修正</li>
-                    <li>ゲームオーバー時の再起動問題</li>
-                    <li>エフェクトの実装と初期化状態の調整</li>
-                </ul>
-            </div>
-        </div>
-    </section>
+    <a class="game-card" href="ragnarok.html">
+      <div class="accent-bar"></div>
+      <div class="card-number">No. 01</div>
+      <div class="card-title"><span class="initial">R</span>AGNAROK</div>
+      <div class="card-origin">— inspired by SCRAMBLE (Konami, 1981)</div>
+      <div class="card-desc">
+        横スクロール、燃料管理、地形をかわして敵基地を破壊せよ。<br>
+        サイケデリックなネオンカラーで蘇る古の名作。
+      </div>
+      <div class="memo">洞窟が熱い</div>
+      <div class="card-play">Play now</div>
+    </a>
 
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-section">
-                    <h3>ものまねゲーム　on Pyxel/h3>
-                    <p>レトロゲーム開発のためのモダンなプラットフォーム Pyxel とClaudeを使ってゲームを作る</p>
-                </div>
-                <div class="footer-section">
-                    <h3>リンク</h3>
-                    <ul class="footer-links">
-                        <li><a href="index.html">ホーム</a></li>
-                        <li><a href="pk.html">ゲーム</a></li>
-                        <li><a href="pk_prompt.html">プロンプト</a></li>
-                    </ul>
-                </div>
-                <div class="footer-section">
-                    <h3>フォローする</h3>
-                    <div class="social-links">
-                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
-                        <a href="#" class="social-link"><i class="fab fa-github"></i></a>
-                        <a href="#" class="social-link"><i class="fab fa-discord"></i></a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; 2025 >Monomane Game on Pyxel All Rights Reserved.</p>
-            </div>
-        </div>
-    </footer>
+    <a class="game-card" href="revanger.html">
+      <div class="accent-bar"></div>
+      <div class="card-number">No. 02</div>
+      <div class="card-title"><span class="initial">R</span>EVANGER</div>
+      <div class="card-origin">— inspired by DEFENDER (Williams, 1981)</div>
+      <div class="card-desc">
+        広大なループワールドを両方向に飛び回り、<br>
+        ランダーに拉致される人間を救出せよ。スキャナー必見。
+      </div>
+      <div class="memo">スマートボム気持ちいい</div>
+      <div class="card-play">Play now</div>
+    </a>
 
-    <script src="script.js"></script>
+    <a class="game-card" href="retrovox.html">
+      <div class="accent-bar"></div>
+      <div class="card-number">No. 03</div>
+      <div class="card-title"><span class="initial">R</span>ETROVOX</div>
+      <div class="card-origin">— inspired by STRATOVOX (Sun Electronics, 1980)</div>
+      <div class="card-desc">
+        しゃべるゲームの元祖へのオマージュ。<br>
+        UFOから人質を守り、「たすけてー」を聞くな。
+      </div>
+      <div class="memo">音声合成あり（ブラウザ依存）</div>
+      <div class="card-play">Play now</div>
+    </a>
+
+  </div>
+
+  <footer>
+    <hr class="footer-line">
+    <div class="footer-text">Browser games · Made with Phaser.js</div>
+    <span class="footer-stamp">R series — all rights to original authors</span>
+  </footer>
+
+</div>
 </body>
 </html>

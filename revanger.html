@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>REVANGER</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Courier New', monospace;
+}
+</style>
+</head>
+<body>
+<div id="game-container"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+<script>
+// ===== REVANGER =====
+// Defender tribute — Williams Electronics 1981
+
+const W = 800, H = 400;
+const WORLD_W = 4000;   // wrap-around world width
+const GROUND_Y = H - 60;
+const SCANNER_X = 10, SCANNER_Y = H - 50, SCANNER_W = 300, SCANNER_H = 40;
+
+// Palette
+const C = {
+  bg:       0x000011,
+  ground:   0x00ff44,
+  ship:     0x00ffff,
+  bullet:   0xffff00,
+  alien:    0xff4400,
+  lander:   0xff00ff,
+  mutant:   0xff6600,
+  human:    0x00ffcc,
+  bomb:     0xff8800,
+  expl:     [0xffffff, 0xff4400, 0xffff00, 0xff8800],
+  scanner:  0x002200,
+  scanLine: 0x00ff44,
+  hud:      0x00ff44,
+  star1:    0x6666ff,
+  star2:    0x333388,
+  hypersp:  0xffffff,
+};
+
+// ===== TITLE =====
+class TitleScene extends Phaser.Scene {
+  constructor() { super('Title'); }
+  create() {
+    this.add.rectangle(W/2, H/2, W, H, C.bg);
+    for (let i = 0; i < 120; i++) {
+      this.add.rectangle(
+        Phaser.Math.Between(0,W), Phaser.Math.Between(0,H),
+        Phaser.Math.Between(1,2), Phaser.Math.Between(1,2),
+        Math.random()>0.5 ? C.star1 : C.star2
+      );
+    }
+
+    const t = this.add.text(W/2, H/2-70, 'REVANGER', {
+      fontSize: '64px', fontFamily: 'Courier New',
+      color: '#ff4400', stroke: '#ffff00', strokeThickness: 4
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, H/2-10, '- DEFENDER TRIBUTE -', {
+      fontSize: '13px', fontFamily: 'Courier New', color: '#ff00ff'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, H/2+30, [
+      'ARROWS / WASD : MOVE',
+      'Z or SPACE    : SHOOT',
+      'X             : SMART BOMB',
+      'C             : HYPERSPACE',
+      '',
+      'SAVE HUMANS FROM LANDERS!',
+      'LANDER + HUMAN = MUTANT!',
+    ].join('\n'), {
+      fontSize: '12px', fontFamily: 'Courier New',
+      color: '#888888', align: 'center'
+    }).setOrigin(0.5);
+
+    const blink = this.add.text(W/2, H/2+148, 'PRESS SPACE TO START', {
+      fontSize: '18px', fontFamily: 'Courier New', color: '#ffff00'
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: blink, alpha: 0, duration: 500, yoyo: true, repeat: -1 });
+
+    this.tweens.addCounter({
+      from:0, to:360, duration:2000, repeat:-1,
+      onUpdate: tw => {
+        const col = Phaser.Display.Color.HSLToColor(tw.getValue()/360,1,0.55);
+        t.setColor('#'+col.color.toString(16).padStart(6,'0'));
+      }
+    });
+
+    this.input.keyboard.once('keydown-SPACE', () => this.scene.start('Game'));
+  }
+}
+
+// ===== GAME =====
+class GameScene extends Phaser.Scene {
+  constructor() { super('Game'); }
+
+  create() {
+    this.score    = 0;
+    this.lives    = 3;
+    this.smartBombs = 3;
+    this.wave     = 1;
+    this.gameOver = false;
+    this.playerAlive = true;
+    this.respawnTimer = 0;
+    this.hyperCool = 0;
+
+    // Camera / world scroll
+    this.camX = 0;   // left edge of viewport in world coords
+
+    // Star parallax layers
+    this.starLayers = [
+      { stars: this._makeStars(60, 0.2), color: C.star2 },
+      { stars: this._makeStars(40, 0.5), color: C.star1 },
+    ];
+
+    // Terrain
+    this.terrainPts = this._buildTerrain();
+
+    // Groups
+    this.humans   = [];
+    this.landers  = [];
+    this.mutants  = [];
+    this.bullets  = [];
+    this.eBullets = [];
+    this.particles= [];
+
+    // Spawn initial entities
+    this._spawnWave();
+
+    // Player
+    this.playerWX = WORLD_W / 2;
+    this.playerY  = H / 2;
+    this.playerVX = 0;
+    this.playerVY = 0;
+    this.facingRight = true;
+    this.shootCool = 0;
+    this.bombCool  = 0;
+
+    // Graphics layers
+    this.gStars   = this.add.graphics().setDepth(0);
+    this.gGround  = this.add.graphics().setDepth(1);
+    this.gEntities= this.add.graphics().setDepth(5);
+    this.gPlayer  = this.add.graphics().setDepth(10);
+    this.gBullets = this.add.graphics().setDepth(8);
+    this.gParticles= this.add.graphics().setDepth(12);
+    this.gHUD     = this.add.graphics().setDepth(20);
+    this.gScanner = this.add.graphics().setDepth(21);
+
+    // HUD text
+    this.txtScore = this.add.text(8,4,'SCORE: 0',{fontSize:'13px',fontFamily:'Courier New',color:'#00ff44'}).setDepth(25);
+    this.txtWave  = this.add.text(W/2,4,'WAVE 1',{fontSize:'13px',fontFamily:'Courier New',color:'#ff8800'}).setOrigin(0.5,0).setDepth(25);
+    this.txtLives = this.add.text(W-8,4,'',{fontSize:'13px',fontFamily:'Courier New',color:'#00ff44',align:'right'}).setOrigin(1,0).setDepth(25);
+    this.txtBombs = this.add.text(W/2,18,'',{fontSize:'11px',fontFamily:'Courier New',color:'#ff8800'}).setOrigin(0.5,0).setDepth(25);
+
+    // Keys
+    this.keys = this.input.keyboard.addKeys({
+      up:    Phaser.Input.Keyboard.KeyCodes.UP,
+      down:  Phaser.Input.Keyboard.KeyCodes.DOWN,
+      left:  Phaser.Input.Keyboard.KeyCodes.LEFT,
+      right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      w: Phaser.Input.Keyboard.KeyCodes.W,
+      a: Phaser.Input.Keyboard.KeyCodes.A,
+      s: Phaser.Input.Keyboard.KeyCodes.S,
+      d: Phaser.Input.Keyboard.KeyCodes.D,
+      shoot: Phaser.Input.Keyboard.KeyCodes.Z,
+      space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      bomb:  Phaser.Input.Keyboard.KeyCodes.X,
+      hyper: Phaser.Input.Keyboard.KeyCodes.C,
+    });
+  }
+
+  _makeStars(count, speed) {
+    return Array.from({length: count}, () => ({
+      wx: Phaser.Math.Between(0, WORLD_W),
+      y:  Phaser.Math.Between(0, GROUND_Y - 10),
+      size: Phaser.Math.Between(1,2),
+      speed,
+    }));
+  }
+
+  _buildTerrain() {
+    // Array of world-x -> ground y (just top surface)
+    const pts = [];
+    let y = GROUND_Y;
+    for (let wx = 0; wx <= WORLD_W; wx += 20) {
+      y += Phaser.Math.Between(-8, 8);
+      y = Phaser.Math.Clamp(y, GROUND_Y - 30, GROUND_Y + 20);
+      pts.push({ wx, y });
+    }
+    pts.push({ wx: WORLD_W, y: pts[0].y }); // wrap
+    return pts;
+  }
+
+  _groundYAt(wx) {
+    const ww = ((wx % WORLD_W) + WORLD_W) % WORLD_W;
+    const seg = 20;
+    const idx = Math.floor(ww / seg);
+    const t = (ww % seg) / seg;
+    const a = this.terrainPts[idx]?.y ?? GROUND_Y;
+    const b = this.terrainPts[(idx+1) % this.terrainPts.length]?.y ?? GROUND_Y;
+    return a + (b - a) * t;
+  }
+
+  _wx2sx(wx) {
+    // world x -> screen x (with wrap)
+    let dx = wx - this.camX;
+    // wrap
+    if (dx > WORLD_W/2)  dx -= WORLD_W;
+    if (dx < -WORLD_W/2) dx += WORLD_W;
+    return dx;
+  }
+
+  _spawnWave() {
+    const numLanders = 4 + this.wave * 2;
+    const numHumans  = Math.max(3, 8 - this.wave);
+    for (let i = 0; i < numLanders; i++) {
+      this.landers.push(this._makeLander());
+    }
+    for (let i = 0; i < numHumans; i++) {
+      const wx = Phaser.Math.Between(100, WORLD_W - 100);
+      this.humans.push({ wx, y: this._groundYAt(wx) - 8, alive: true, carried: false, carriedBy: null });
+    }
+    for (let i = 0; i < this.wave - 1; i++) {
+      this.mutants.push(this._makeMutant());
+    }
+  }
+
+  _makeLander() {
+    return {
+      wx: Phaser.Math.Between(0, WORLD_W),
+      y: Phaser.Math.Between(40, H * 0.4),
+      vx: Phaser.Math.FloatBetween(-1.2, 1.2),
+      vy: 0,
+      alive: true,
+      target: null,      // human it's abducting
+      carrying: false,
+      shootCool: Phaser.Math.Between(60, 180),
+      hp: 1,
+    };
+  }
+
+  _makeMutant() {
+    return {
+      wx: Phaser.Math.Between(0, WORLD_W),
+      y: Phaser.Math.Between(60, H * 0.5),
+      vx: Phaser.Math.FloatBetween(-2.5, 2.5) + (Math.random()>0.5?2:-2),
+      vy: Phaser.Math.FloatBetween(-1,1),
+      alive: true,
+      shootCool: Phaser.Math.Between(40, 100),
+      hp: 2,
+    };
+  }
+
+  _spawnExpl(wx, y, big) {
+    const n = big ? 24 : 12;
+    for (let i = 0; i < n; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Phaser.Math.FloatBetween(1, big ? 6 : 3);
+      this.particles.push({
+        wx, y,
+        vx: Math.cos(angle)*speed,
+        vy: Math.sin(angle)*speed,
+        life: big ? 45 : 28,
+        maxLife: big ? 45 : 28,
+        color: Phaser.Utils.Array.GetRandom(C.expl),
+        size: Phaser.Math.Between(1, big?4:3),
+      });
+    }
+  }
+
+  _fireBullet() {
+    const speed = this.facingRight ? 14 : -14;
+    this.bullets.push({ wx: this.playerWX, y: this.playerY, vx: speed, alive: true });
+  }
+
+  _smartBomb() {
+    if (this.smartBombs <= 0) return;
+    this.smartBombs--;
+    // kill all visible enemies
+    const margin = W * 0.6;
+    this.landers.forEach(l => {
+      if (!l.alive) return;
+      const sx = this._wx2sx(l.wx);
+      if (sx > -margin && sx < W + margin) {
+        this._spawnExpl(l.wx, l.y, true);
+        if (l.carrying && l.target) {
+          l.target.carried = false; l.target.carriedBy = null;
+        }
+        l.alive = false;
+        this.score += 150;
+      }
+    });
+    this.mutants.forEach(m => {
+      if (!m.alive) return;
+      const sx = this._wx2sx(m.wx);
+      if (sx > -margin && sx < W + margin) {
+        this._spawnExpl(m.wx, m.y, true);
+        m.alive = false;
+        this.score += 250;
+      }
+    });
+    // Flash
+    this.cameras.main.flash(200, 255, 255, 255);
+  }
+
+  _hyperspace() {
+    if (this.hyperCool > 0) return;
+    this.playerWX = Phaser.Math.Between(100, WORLD_W - 100);
+    this.playerY  = Phaser.Math.Between(60, GROUND_Y - 40);
+    this.playerVX = 0; this.playerVY = 0;
+    this.hyperCool = 180;
+    this._spawnExpl(this.playerWX, this.playerY, false);
+    this.cameras.main.shake(200, 0.005);
+  }
+
+  update() {
+    if (this.gameOver) return;
+
+    this.shootCool--;
+    this.bombCool--;
+    this.hyperCool--;
+
+    // ---- Player input ----
+    if (this.playerAlive) {
+      const accel = 0.5, maxSpd = 5;
+      const goRight = this.keys.right.isDown || this.keys.d.isDown;
+      const goLeft  = this.keys.left.isDown  || this.keys.a.isDown;
+      const goUp    = this.keys.up.isDown    || this.keys.w.isDown;
+      const goDown  = this.keys.down.isDown  || this.keys.s.isDown;
+
+      if (goRight) { this.playerVX = Math.min(this.playerVX + accel, maxSpd); this.facingRight = true; }
+      if (goLeft)  { this.playerVX = Math.max(this.playerVX - accel, -maxSpd); this.facingRight = false; }
+      if (!goRight && !goLeft) this.playerVX *= 0.85;
+
+      if (goUp)   this.playerVY = Math.max(this.playerVY - accel, -maxSpd);
+      if (goDown) this.playerVY = Math.min(this.playerVY + accel, maxSpd);
+      if (!goUp && !goDown) this.playerVY *= 0.85;
+
+      this.playerWX = ((this.playerWX + this.playerVX) + WORLD_W) % WORLD_W;
+      this.playerY  = Phaser.Math.Clamp(this.playerY + this.playerVY, 20, GROUND_Y - 16);
+
+      // Terrain collision
+      if (this.playerY >= this._groundYAt(this.playerWX) - 10) this._killPlayer();
+
+      // Shoot
+      const shootDown = this.keys.shoot.isDown || this.keys.space.isDown;
+      if (shootDown && this.shootCool <= 0) {
+        this._fireBullet();
+        this.shootCool = 10;
+      }
+      if (Phaser.Input.Keyboard.JustDown(this.keys.bomb) && this.bombCool <= 0) {
+        this._smartBomb();
+        this.bombCool = 30;
+      }
+      if (Phaser.Input.Keyboard.JustDown(this.keys.hyper)) {
+        this._hyperspace();
+      }
+    } else {
+      this.respawnTimer--;
+      if (this.respawnTimer <= 0 && this.lives > 0) {
+        this.playerWX = WORLD_W / 2;
+        this.playerY  = H / 2;
+        this.playerVX = 0; this.playerVY = 0;
+        this.playerAlive = true;
+      }
+    }
+
+    // Camera follows player
+    this.camX = (this.playerWX - W/2 + WORLD_W) % WORLD_W;
+
+    // ---- Update landers ----
+    this.landers.forEach(l => {
+      if (!l.alive) return;
+      if (!l.carrying) {
+        // Find nearest human to abduct
+        if (!l.target || !l.target.alive || l.target.carried) {
+          l.target = null;
+          const nearby = this.humans.filter(h => h.alive && !h.carried);
+          if (nearby.length > 0 && Math.random() < 0.01) {
+            l.target = Phaser.Utils.Array.GetRandom(nearby);
+          }
+        }
+        if (l.target) {
+          // Move toward target
+          const dx = l.target.wx - l.wx;
+          const dy = l.target.y - l.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < 8) {
+            // Grab human
+            l.carrying = true;
+            l.target.carried = true;
+            l.target.carriedBy = l;
+          } else {
+            l.wx = ((l.wx + Math.sign(dx) * 1.2) + WORLD_W) % WORLD_W;
+            l.y  += Math.sign(dy) * 1.0;
+          }
+        } else {
+          l.wx = ((l.wx + l.vx) + WORLD_W) % WORLD_W;
+          l.y += Math.sin(l.wx * 0.01) * 0.5;
+          l.y = Phaser.Math.Clamp(l.y, 30, H * 0.55);
+        }
+      } else {
+        // Carry human upward
+        l.wx = ((l.wx + l.vx * 0.5) + WORLD_W) % WORLD_W;
+        l.y -= 1.2;
+        if (l.target) { l.target.wx = l.wx; l.target.y = l.y + 14; }
+        if (l.y < -20) {
+          // Human gone → lander becomes mutant
+          if (l.target) { l.target.alive = false; }
+          l.alive = false;
+          this.mutants.push(this._makeMutantAt(l.wx, 30));
+          this.score -= 100;
+        }
+      }
+
+      // Shoot at player
+      l.shootCool--;
+      if (l.shootCool <= 0 && this.playerAlive) {
+        const dx = this.playerWX - l.wx;
+        const dy = this.playerY - l.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if (dist < 300) {
+          const spd = 5;
+          this.eBullets.push({ wx:l.wx, y:l.y, vx:(dx/dist)*spd, vy:(dy/dist)*spd, alive:true });
+        }
+        l.shootCool = Phaser.Math.Between(80, 160);
+      }
+
+      // Collision with player bullets handled below
+    });
+
+    // ---- Mutants ----
+    this.mutants.forEach(m => {
+      if (!m.alive) return;
+      // Chase player
+      const dx = this.playerWX - m.wx;
+      const adjDx = dx > WORLD_W/2 ? dx-WORLD_W : dx < -WORLD_W/2 ? dx+WORLD_W : dx;
+      const dy = this.playerY - m.y;
+      const dist = Math.sqrt(adjDx*adjDx + dy*dy);
+      m.wx = ((m.wx + (adjDx/dist)*2.5) + WORLD_W) % WORLD_W;
+      m.y += (dy/dist)*2.0;
+      m.y = Phaser.Math.Clamp(m.y, 30, GROUND_Y - 10);
+
+      m.shootCool--;
+      if (m.shootCool <= 0 && this.playerAlive) {
+        const spd = 6;
+        this.eBullets.push({ wx:m.wx, y:m.y, vx:(adjDx/dist)*spd, vy:(dy/dist)*spd, alive:true });
+        m.shootCool = Phaser.Math.Between(50, 120);
+      }
+
+      if (this.playerAlive) {
+        const sx = this._wx2sx(m.wx);
+        const pdx = Math.abs(sx - W/2), pdy = Math.abs(m.y - this.playerY);
+        if (pdx < 14 && pdy < 10) this._killPlayer();
+      }
+    });
+
+    // ---- Player bullets ----
+    this.bullets.forEach(b => {
+      if (!b.alive) return;
+      b.wx = ((b.wx + b.vx) + WORLD_W) % WORLD_W;
+      if (Math.abs(b.wx - this.playerWX) > W) { b.alive = false; return; }
+
+      // Hit landers
+      this.landers.forEach(l => {
+        if (!l.alive || !b.alive) return;
+        let dx = l.wx - b.wx; 
+        if (Math.abs(dx) > WORLD_W/2) dx = dx > 0 ? dx-WORLD_W : dx+WORLD_W;
+        if (Math.abs(dx)<14 && Math.abs(l.y-b.y)<12) {
+          l.hp--;
+          if (l.hp <= 0) {
+            if (l.carrying && l.target) {
+              l.target.carried = false; l.target.carriedBy = null;
+              // Catch bonus — human falls, we save them if they land
+              l.target.falling = true; l.target.vy = -2;
+            }
+            this._spawnExpl(l.wx, l.y, true);
+            l.alive = false;
+            this.score += 150;
+          }
+          b.alive = false;
+        }
+      });
+      if (!b.alive) return;
+
+      // Hit mutants
+      this.mutants.forEach(m => {
+        if (!m.alive || !b.alive) return;
+        let dx = m.wx - b.wx;
+        if (Math.abs(dx) > WORLD_W/2) dx = dx > 0 ? dx-WORLD_W : dx+WORLD_W;
+        if (Math.abs(dx)<14 && Math.abs(m.y-b.y)<12) {
+          m.hp--;
+          this._spawnExpl(m.wx, m.y, false);
+          if (m.hp <= 0) { m.alive = false; this.score += 250; }
+          b.alive = false;
+        }
+      });
+
+      // Terrain
+      if (b.y >= this._groundYAt(b.wx) - 5) b.alive = false;
+    });
+
+    // ---- Enemy bullets ----
+    this.eBullets.forEach(b => {
+      if (!b.alive) return;
+      b.wx = ((b.wx + b.vx) + WORLD_W) % WORLD_W;
+      b.y += b.vy;
+      if (b.y < 0 || b.y > H) { b.alive = false; return; }
+      if (b.y >= this._groundYAt(b.wx)) { b.alive = false; return; }
+      if (this.playerAlive) {
+        const sx = this._wx2sx(b.wx);
+        if (Math.abs(sx - W/2) < 10 && Math.abs(b.y - this.playerY) < 8) {
+          this._killPlayer();
+          b.alive = false;
+        }
+      }
+    });
+
+    // ---- Falling humans ----
+    this.humans.forEach(h => {
+      if (!h.alive || !h.falling) return;
+      h.vy = (h.vy || 0) + 0.15;
+      h.y += h.vy;
+      const gy = this._groundYAt(h.wx) - 8;
+      if (h.y >= gy) { h.y = gy; h.falling = false; h.vy = 0; this.score += 500; }
+      // Player catch
+      if (this.playerAlive) {
+        const sx = this._wx2sx(h.wx);
+        if (Math.abs(sx - W/2) < 16 && Math.abs(h.y - this.playerY) < 16) {
+          h.falling = false; h.y = this._groundYAt(h.wx) - 8;
+          this.score += 500;
+        }
+      }
+    });
+
+    // ---- Particles ----
+    this.particles.forEach(p => {
+      p.wx = ((p.wx + p.vx) + WORLD_W) % WORLD_W;
+      p.y += p.vy;
+      p.vx *= 0.92; p.vy *= 0.92;
+      p.life--;
+    });
+    this.particles = this.particles.filter(p => p.life > 0);
+
+    // Cleanup
+    this.bullets  = this.bullets.filter(b => b.alive);
+    this.eBullets = this.eBullets.filter(b => b.alive);
+    this.landers  = this.landers.filter(l => l.alive);
+    this.mutants  = this.mutants.filter(m => m.alive);
+
+    // Wave clear?
+    if (this.landers.length === 0 && this.mutants.length === 0 && !this.gameOver) {
+      this.wave++;
+      this.score += 1000;
+      this.smartBombs = Math.min(this.smartBombs + 1, 5);
+      this.time.delayedCall(1500, () => { if (!this.gameOver) this._spawnWave(); });
+    }
+
+    // Draw everything
+    this._draw();
+    this._drawHUD();
+  }
+
+  _makeMutantAt(wx, y) {
+    return { wx, y, vx: Phaser.Math.FloatBetween(-3,3), vy:0, alive:true, shootCool:60, hp:2 };
+  }
+
+  _killPlayer() {
+    if (!this.playerAlive) return;
+    this._spawnExpl(this.playerWX, this.playerY, true);
+    this.playerAlive = false;
+    this.lives--;
+    this.respawnTimer = 150;
+    this.cameras.main.shake(300, 0.01);
+    if (this.lives <= 0) this._triggerGameOver();
+  }
+
+  _triggerGameOver() {
+    this.gameOver = true;
+    const g = this.add.graphics().setDepth(50);
+    g.fillStyle(0x000000, 0.85);
+    g.fillRect(W/2-160, H/2-60, 320, 120);
+    this.add.text(W/2, H/2-35,'GAME OVER',{fontSize:'40px',fontFamily:'Courier New',color:'#ff4400',stroke:'#ffff00',strokeThickness:3}).setOrigin(0.5).setDepth(51);
+    this.add.text(W/2, H/2+10,'SCORE: '+this.score,{fontSize:'18px',fontFamily:'Courier New',color:'#00ff44'}).setOrigin(0.5).setDepth(51);
+    const b = this.add.text(W/2,H/2+42,'PRESS SPACE',{fontSize:'14px',fontFamily:'Courier New',color:'#ffff00'}).setOrigin(0.5).setDepth(51);
+    this.tweens.add({targets:b,alpha:0,duration:400,yoyo:true,repeat:-1});
+    this.input.keyboard.once('keydown-SPACE',()=>this.scene.start('Title'));
+  }
+
+  _draw() {
+    const g = this.gStars;
+    g.clear();
+
+    // Stars (parallax)
+    this.starLayers.forEach(layer => {
+      g.fillStyle(layer.color, 1);
+      layer.stars.forEach(s => {
+        const sx = this._wx2sx(s.wx * layer.speed * (1/layer.speed));
+        // Simple: just screen-space scatter scrolling
+        const dispX = ((s.wx - this.camX * layer.speed + WORLD_W*10) % W);
+        g.fillRect(dispX, s.y, s.size, s.size);
+      });
+    });
+
+    // Terrain
+    const gt = this.gGround;
+    gt.clear();
+    gt.fillStyle(C.bg, 1);
+    gt.fillRect(0, 0, W, H);
+
+    // Ground surface with neon
+    gt.lineStyle(2, C.ground, 1);
+    gt.fillStyle(0x003311, 1);
+    gt.beginPath();
+    gt.moveTo(0, H);
+    for (let sx = 0; sx <= W; sx += 4) {
+      const wx = (this.camX + sx + WORLD_W) % WORLD_W;
+      const gy = this._groundYAt(wx);
+      if (sx === 0) gt.moveTo(-2, gy); else gt.lineTo(sx, gy);
+    }
+    gt.lineTo(W+2, H); gt.lineTo(-2, H);
+    gt.closePath();
+    gt.fillPath();
+    gt.beginPath();
+    for (let sx = 0; sx <= W; sx += 4) {
+      const wx = (this.camX + sx + WORLD_W) % WORLD_W;
+      const gy = this._groundYAt(wx);
+      if (sx === 0) gt.moveTo(-2, gy); else gt.lineTo(sx, gy);
+    }
+    gt.strokePath();
+
+    // Entities
+    const ge = this.gEntities;
+    ge.clear();
+
+    // Humans
+    this.humans.forEach(h => {
+      if (!h.alive) return;
+      const sx = this._wx2sx(h.wx);
+      if (sx < -10 || sx > W+10) return;
+      ge.fillStyle(C.human, 1);
+      ge.fillRect(sx-3, h.y-10, 6, 10);
+      ge.fillCircle(sx, h.y-13, 4);
+      // Wave arms if falling
+      if (h.falling) {
+        ge.fillRect(sx-8, h.y-8, 5, 2);
+        ge.fillRect(sx+3, h.y-8, 5, 2);
+      }
+    });
+
+    // Landers
+    this.landers.forEach(l => {
+      if (!l.alive) return;
+      const sx = this._wx2sx(l.wx);
+      if (sx < -20 || sx > W+20) return;
+      ge.fillStyle(C.lander, 1);
+      // Body
+      ge.fillEllipse(sx, l.y, 28, 14);
+      ge.fillStyle(0x880088, 1);
+      ge.fillEllipse(sx, l.y-6, 16, 10);
+      // Legs
+      ge.lineStyle(2, C.lander, 1);
+      ge.lineBetween(sx-8, l.y+7, sx-12, l.y+14);
+      ge.lineBetween(sx+8, l.y+7, sx+12, l.y+14);
+      ge.lineBetween(sx, l.y+7, sx, l.y+14);
+      if (l.carrying) {
+        ge.fillStyle(C.human, 0.8);
+        ge.fillRect(sx-3, l.y+12, 6, 8);
+      }
+    });
+
+    // Mutants
+    this.mutants.forEach(m => {
+      if (!m.alive) return;
+      const sx = this._wx2sx(m.wx);
+      if (sx < -20 || sx > W+20) return;
+      ge.fillStyle(C.mutant, 1);
+      ge.fillEllipse(sx, m.y, 22, 18);
+      ge.fillStyle(0xff2200, 1);
+      ge.fillCircle(sx-5, m.y-4, 4);
+      ge.fillCircle(sx+5, m.y-4, 4);
+      ge.fillStyle(0xffff00, 1);
+      ge.fillCircle(sx-5, m.y-4, 2);
+      ge.fillCircle(sx+5, m.y-4, 2);
+      // Tentacles
+      ge.lineStyle(2, C.mutant, 1);
+      for (let i=-2;i<=2;i++) {
+        ge.lineBetween(sx+i*4, m.y+9, sx+i*5, m.y+16);
+      }
+    });
+
+    // Player
+    if (this.playerAlive) {
+      const gp = this.gPlayer;
+      gp.clear();
+      const px = W/2, py = this.playerY;
+      const flip = this.facingRight ? 1 : -1;
+      gp.fillStyle(C.ship, 1);
+      gp.fillTriangle(px+18*flip, py, px-8*flip, py-9, px-8*flip, py+9);
+      gp.fillStyle(0x006688, 1);
+      gp.fillRect(px-8*flip, py-5, 12*flip, 10);
+      // Engine glow
+      gp.fillStyle(0xff8800, 1);
+      gp.fillTriangle(px-8*flip, py-4, px-14*flip, py, px-8*flip, py+4);
+      // Cockpit
+      gp.fillStyle(0x88ffff, 0.8);
+      gp.fillCircle(px+4*flip, py, 4);
+    }
+
+    // Bullets
+    const gb = this.gBullets;
+    gb.clear();
+    this.bullets.forEach(b => {
+      const sx = this._wx2sx(b.wx);
+      if (sx < -5 || sx > W+5) return;
+      gb.fillStyle(C.bullet, 1);
+      gb.fillRect(sx-6, b.y-2, 12, 4);
+    });
+    this.eBullets.forEach(b => {
+      const sx = this._wx2sx(b.wx);
+      if (sx < -5 || sx > W+5) return;
+      gb.fillStyle(0xff6600, 1);
+      gb.fillCircle(sx, b.y, 4);
+    });
+
+    // Particles
+    const gpar = this.gParticles;
+    gpar.clear();
+    this.particles.forEach(p => {
+      const sx = this._wx2sx(p.wx);
+      if (sx < -10 || sx > W+10) return;
+      const alpha = p.life / p.maxLife;
+      gpar.fillStyle(p.color, alpha);
+      gpar.fillCircle(sx, p.y, p.size);
+    });
+  }
+
+  _drawHUD() {
+    this.txtScore.setText('SCORE: ' + this.score);
+    this.txtWave.setText('WAVE ' + this.wave);
+    this.txtLives.setText('♦'.repeat(this.lives));
+    this.txtBombs.setText('BOMB: ' + '★'.repeat(this.smartBombs) + '  HYPER: ' + (this.hyperCool > 0 ? 'WAIT' : 'READY'));
+
+    // Scanner
+    const gs = this.gScanner;
+    gs.clear();
+    gs.fillStyle(C.scanner, 0.9);
+    gs.fillRect(SCANNER_X, SCANNER_Y, SCANNER_W, SCANNER_H);
+    gs.lineStyle(1, C.scanLine, 1);
+    gs.strokeRect(SCANNER_X, SCANNER_Y, SCANNER_W, SCANNER_H);
+
+    // Scale: world → scanner
+    const sx = (wx) => SCANNER_X + (((wx - this.camX + WORLD_W) % WORLD_W) / WORLD_W) * SCANNER_W;
+    // Alternate: absolute position
+    const sxa = (wx) => SCANNER_X + (((wx % WORLD_W) + WORLD_W) % WORLD_W) / WORLD_W * SCANNER_W;
+    const sya = (y)  => SCANNER_Y + (y / H) * SCANNER_H;
+
+    // Humans
+    this.humans.forEach(h => {
+      if (!h.alive) return;
+      gs.fillStyle(C.human, 1);
+      gs.fillRect(sxa(h.wx)-1, SCANNER_Y+SCANNER_H-6, 2, 5);
+    });
+
+    // Landers
+    this.landers.forEach(l => {
+      if (!l.alive) return;
+      gs.fillStyle(C.lander, 1);
+      gs.fillCircle(sxa(l.wx), sya(l.y), 2);
+    });
+
+    // Mutants
+    this.mutants.forEach(m => {
+      if (!m.alive) return;
+      gs.fillStyle(C.mutant, 1);
+      gs.fillCircle(sxa(m.wx), sya(m.y), 2);
+    });
+
+    // Player marker
+    gs.fillStyle(C.ship, 1);
+    gs.fillTriangle(
+      sxa(this.playerWX), sya(this.playerY)-4,
+      sxa(this.playerWX)-4, sya(this.playerY)+4,
+      sxa(this.playerWX)+4, sya(this.playerY)+4
+    );
+
+    // Viewport indicator
+    gs.lineStyle(1, 0xffffff, 0.5);
+    const vpx = sxa(this.camX);
+    const vpw = (W / WORLD_W) * SCANNER_W;
+    gs.strokeRect(vpx, SCANNER_Y, vpw, SCANNER_H);
+  }
+}
+
+const config = {
+  type: Phaser.AUTO,
+  width: W, height: H,
+  backgroundColor: '#000011',
+  parent: 'game-container',
+  scene: [TitleScene, GameScene],
+  render: { antialias: false },
+};
+new Phaser.Game(config);
+</script>
+</body>
+</html>

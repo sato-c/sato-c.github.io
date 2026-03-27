@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>RAGNAROK</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Courier New', monospace;
+}
+#game-container canvas { display: block; }
+</style>
+</head>
+<body>
+<div id="game-container"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+<script>
+// ===== RAGNAROK / SCRAMBLE tribute =====
+// Psychedelic neon palette on black
+
+const W = 768, H = 384;
+const SCROLL_SPEED = 2;
+
+// Color palette — original arcade neon
+const C = {
+  bg:       0x000000,
+  terrain:  0x00ff44,
+  ship:     0x00ffff,
+  bullet:   0xffff00,
+  enemy:    0xff4400,
+  missile:  0xff00ff,
+  fuel:     0xff8800,
+  hud:      0x00ff44,
+  expl1:    0xffffff,
+  expl2:    0xff4400,
+  expl3:    0xffff00,
+  star1:    0x8888ff,
+  star2:    0x4444aa,
+};
+
+// ===== TITLE SCENE =====
+class TitleScene extends Phaser.Scene {
+  constructor() { super('Title'); }
+  create() {
+    this.add.rectangle(W/2, H/2, W, H, C.bg);
+    // Starfield
+    for (let i = 0; i < 80; i++) {
+      this.add.rectangle(
+        Phaser.Math.Between(0, W),
+        Phaser.Math.Between(0, H),
+        Phaser.Math.Between(1,2), Phaser.Math.Between(1,2),
+        i % 2 === 0 ? C.star1 : C.star2
+      );
+    }
+    const title = this.add.text(W/2, H/2 - 60, 'RAGNAROK', {
+      fontSize: '56px', fontFamily: 'Courier New',
+      color: '#ff4400',
+      stroke: '#ffff00', strokeThickness: 3,
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, H/2 + 20, 'KONAMI 1981 TRIBUTE', {
+      fontSize: '14px', fontFamily: 'Courier New', color: '#00ff44'
+    }).setOrigin(0.5);
+
+    this.add.text(W/2, H/2 + 60, 'ARROW KEYS: MOVE   Z: SHOOT   X: BOMB', {
+      fontSize: '12px', fontFamily: 'Courier New', color: '#888888'
+    }).setOrigin(0.5);
+
+    const blink = this.add.text(W/2, H/2 + 100, 'PRESS SPACE TO START', {
+      fontSize: '18px', fontFamily: 'Courier New', color: '#ffff00'
+    }).setOrigin(0.5);
+    this.tweens.add({ targets: blink, alpha: 0, duration: 500, yoyo: true, repeat: -1 });
+
+    this.input.keyboard.once('keydown-SPACE', () => this.scene.start('Game'));
+
+    // Animate title color
+    this.tweens.addCounter({
+      from: 0, to: 360, duration: 3000, repeat: -1,
+      onUpdate: (t) => {
+        const h = t.getValue();
+        const color = Phaser.Display.Color.HSLToColor(h/360, 1, 0.5);
+        title.setStroke('#' + color.color.toString(16).padStart(6,'0'), 3);
+      }
+    });
+  }
+}
+
+// ===== GAME SCENE =====
+class GameScene extends Phaser.Scene {
+  constructor() { super('Game'); }
+
+  create() {
+    this.score = 0;
+    this.lives = 3;
+    this.fuel = 100;
+    this.fuelTimer = 0;
+    this.gameOver = false;
+    this.playerAlive = true;
+    this.respawnTimer = 0;
+
+    // Groups
+    this.terrainGraphics = this.add.graphics();
+    this.stars = this.add.graphics();
+    this.enemyGroup   = this.add.group();
+    this.bulletGroup  = this.add.group();
+    this.bombGroup    = this.add.group();
+    this.enemyBullets = this.add.group();
+    this.explosions   = this.add.group();
+    this.fuelCells    = this.add.group();
+    this.rockets      = this.add.group();
+
+    // Generate initial terrain
+    this.terrainData = this._generateTerrain(200);
+    this.terrainOffset = 0;
+
+    // Stars
+    this.starData = [];
+    for (let i = 0; i < 100; i++) {
+      this.starData.push({
+        x: Phaser.Math.Between(0, W),
+        y: Phaser.Math.Between(0, H),
+        speed: Phaser.Math.FloatBetween(0.3, 1.2),
+        size: Phaser.Math.Between(1,2),
+        color: Math.random() > 0.5 ? C.star1 : C.star2
+      });
+    }
+
+    // Player ship
+    this.player = this._createShip(120, H/2);
+
+    // Populate initial enemies and fuel
+    this._populateSection(0, 150);
+
+    // Keys
+    this.keys = this.input.keyboard.addKeys({
+      up:    Phaser.Input.Keyboard.KeyCodes.UP,
+      down:  Phaser.Input.Keyboard.KeyCodes.DOWN,
+      left:  Phaser.Input.Keyboard.KeyCodes.LEFT,
+      right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      shoot: Phaser.Input.Keyboard.KeyCodes.Z,
+      bomb:  Phaser.Input.Keyboard.KeyCodes.X,
+    });
+    this.shootCool = 0;
+    this.bombCool  = 0;
+
+    // HUD
+    this._createHUD();
+
+    // Spawn timer for enemies
+    this.spawnTimer = 0;
+    this.sectionX = 150; // next terrain section to populate
+  }
+
+  _createShip(x, y) {
+    const g = this.add.graphics();
+    g.fillStyle(C.ship, 1);
+    // Body
+    g.fillTriangle(16,0, -8,8, -8,-8);
+    g.fillStyle(0x006688, 1);
+    g.fillRect(-8,-4, 10,8);
+    // Engines
+    g.fillStyle(0x00aaff, 0.8);
+    g.fillRect(-12,-7, 6,4);
+    g.fillRect(-12,3, 6,4);
+    g.generateTexture('ship', 28, 18);
+    g.destroy();
+
+    const ship = this.add.image(x, y, 'ship');
+    ship.setDepth(10);
+    ship.vx = 0; ship.vy = 0;
+    ship.alive = true;
+    return ship;
+  }
+
+  _generateTerrain(count) {
+    // Returns array of {topY, botY} for each column-segment
+    const data = [];
+    let topY = 50, botY = H - 50;
+    const minGap = 80;
+    for (let i = 0; i < count; i++) {
+      topY += Phaser.Math.Between(-6, 6);
+      botY += Phaser.Math.Between(-6, 6);
+      topY = Phaser.Math.Clamp(topY, 20, H/2 - 30);
+      botY = Phaser.Math.Clamp(botY, H/2 + 30, H - 20);
+      if (botY - topY < minGap) {
+        if (topY > 30) topY -= 10; else botY += 10;
+      }
+      data.push({ topY, botY });
+    }
+    return data;
+  }
+
+  _populateSection(startCol, endCol) {
+    // Place fuel cells and rockets on bottom terrain
+    const segW = 8;
+    for (let i = startCol; i < endCol; i++) {
+      const d = this.terrainData[i % this.terrainData.length];
+      const wx = i * segW - this.terrainOffset;
+      if (Math.random() < 0.015) {
+        this._createFuelCell(wx + W, d.botY - 12);
+      }
+      if (Math.random() < 0.012) {
+        this._createRocket(wx + W, d.botY - 16);
+      }
+    }
+  }
+
+  _createFuelCell(x, y) {
+    const g = this.add.graphics();
+    g.fillStyle(C.fuel, 1);
+    g.fillRect(0, 0, 16, 20);
+    g.fillStyle(0xffcc00, 1);
+    g.fillRect(3, 2, 10, 4);
+    g.fillRect(3, 8, 10, 4);
+    g.fillRect(3, 14, 10, 4);
+    g.generateTexture('fuel_cell', 16, 20);
+    g.destroy();
+    const fc = this.add.image(x, y, 'fuel_cell');
+    fc.setDepth(5);
+    fc.alive = true;
+    this.fuelCells.add(fc);
+    return fc;
+  }
+
+  _createRocket(x, y) {
+    const g = this.add.graphics();
+    g.fillStyle(C.missile, 1);
+    g.fillTriangle(6,0, 0,16, 12,16);
+    g.fillStyle(0xaa00aa, 1);
+    g.fillRect(2, 12, 8, 6);
+    g.generateTexture('rocket', 12, 18);
+    g.destroy();
+    const r = this.add.image(x, y, 'rocket');
+    r.setDepth(5);
+    r.alive = true;
+    r.shootCool = Phaser.Math.Between(60, 180);
+    this.rockets.add(r);
+    return r;
+  }
+
+  _createUFO(x, y) {
+    const g = this.add.graphics();
+    g.fillStyle(C.enemy, 1);
+    g.fillEllipse(0, 0, 28, 12);
+    g.fillStyle(0xff8800, 1);
+    g.fillEllipse(0, -6, 16, 10);
+    g.fillStyle(0xffff00, 0.6);
+    g.fillEllipse(0, -6, 8, 6);
+    g.generateTexture('ufo', 28, 18);
+    g.destroy();
+    const ufo = this.add.image(x, y, 'ufo');
+    ufo.setDepth(6);
+    ufo.alive = true;
+    ufo.vy = Phaser.Math.FloatBetween(-1, 1);
+    ufo.shootCool = Phaser.Math.Between(60, 120);
+    this.enemyGroup.add(ufo);
+    return ufo;
+  }
+
+  _createHUD() {
+    this.hudScore = this.add.text(8, 4, 'SCORE: 0', {
+      fontSize: '13px', fontFamily: 'Courier New', color: '#00ff44'
+    }).setDepth(20);
+    this.hudLives = this.add.text(W - 100, 4, 'SHIPS: 3', {
+      fontSize: '13px', fontFamily: 'Courier New', color: '#00ff44'
+    }).setDepth(20);
+    this.hudFuelLabel = this.add.text(W/2 - 80, 4, 'FUEL', {
+      fontSize: '13px', fontFamily: 'Courier New', color: '#ff8800'
+    }).setDepth(20);
+    this.hudFuelBg = this.add.rectangle(W/2 + 10, 11, 120, 12, 0x333300).setDepth(20);
+    this.hudFuelBar = this.add.rectangle(W/2 - 50, 11, 120, 10, C.fuel).setDepth(21);
+    this.hudFuelBar.setOrigin(0, 0.5);
+  }
+
+  _updateHUD() {
+    this.hudScore.setText('SCORE: ' + this.score);
+    this.hudLives.setText('SHIPS: ' + this.lives);
+    const fw = Math.max(0, (this.fuel / 100) * 120);
+    this.hudFuelBar.setSize(fw, 10);
+    const fc = this.fuel > 30 ? C.fuel : (this.fuel > 15 ? 0xffff00 : 0xff0000);
+    this.hudFuelBar.setFillStyle(fc);
+  }
+
+  _spawnExplosion(x, y, big) {
+    const count = big ? 20 : 10;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const speed = Phaser.Math.FloatBetween(1, big ? 5 : 3);
+      const colors = [C.expl1, C.expl2, C.expl3];
+      const g = this.add.graphics();
+      const col = Phaser.Utils.Array.GetRandom(colors);
+      g.fillStyle(col, 1);
+      g.fillCircle(0, 0, big ? Phaser.Math.Between(2,5) : Phaser.Math.Between(1,3));
+      g.generateTexture('px_' + col, 10, 10);
+      g.destroy();
+      const p = this.add.image(x, y, 'px_' + col);
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.life = big ? 40 : 25;
+      p.setDepth(15);
+      this.explosions.add(p);
+    }
+  }
+
+  _fireBullet() {
+    const b = this.add.rectangle(this.player.x + 14, this.player.y, 12, 3, C.bullet);
+    b.setDepth(8);
+    b.vx = 10;
+    this.bulletGroup.add(b);
+  }
+
+  _dropBomb() {
+    const b = this.add.rectangle(this.player.x, this.player.y + 8, 6, 6, 0xffff00);
+    b.setDepth(8);
+    b.vy = 5;
+    this.bombGroup.add(b);
+  }
+
+  _fireEnemyBullet(x, y, targetX, targetY) {
+    const angle = Phaser.Math.Angle.Between(x, y, targetX, targetY);
+    const speed = 4;
+    const b = this.add.rectangle(x, y, 8, 3, 0xff6600);
+    b.setDepth(8);
+    b.vx = Math.cos(angle) * speed;
+    b.vy = Math.sin(angle) * speed;
+    this.enemyBullets.add(b);
+  }
+
+  _getTerrainAt(screenX) {
+    const segW = 8;
+    const col = Math.floor((screenX + this.terrainOffset) / segW);
+    const idx = Phaser.Math.Clamp(col, 0, this.terrainData.length - 1);
+    return this.terrainData[idx % this.terrainData.length];
+  }
+
+  _drawTerrain() {
+    const g = this.terrainGraphics;
+    g.clear();
+    const segW = 8;
+
+    // Draw stars
+    this.stars.clear();
+    for (const s of this.starData) {
+      s.x -= s.speed;
+      if (s.x < 0) { s.x = W; s.y = Phaser.Math.Between(0, H); }
+      this.stars.fillStyle(s.color, 1);
+      this.stars.fillRect(s.x, s.y, s.size, s.size);
+    }
+
+    // Top terrain
+    g.beginPath();
+    g.moveTo(0, 0);
+    for (let sx = 0; sx <= W + segW; sx += segW) {
+      const col = Math.floor((sx + this.terrainOffset) / segW);
+      const d = this.terrainData[col % this.terrainData.length];
+      g.lineTo(sx, d.topY);
+    }
+    g.lineTo(W, 0);
+    g.closePath();
+    g.fillStyle(C.terrain, 1);
+    g.fillPath();
+
+    // Bottom terrain
+    g.beginPath();
+    g.moveTo(0, H);
+    for (let sx = 0; sx <= W + segW; sx += segW) {
+      const col = Math.floor((sx + this.terrainOffset) / segW);
+      const d = this.terrainData[col % this.terrainData.length];
+      g.lineTo(sx, d.botY);
+    }
+    g.lineTo(W, H);
+    g.closePath();
+    g.fillStyle(C.terrain, 1);
+    g.fillPath();
+
+    // Neon edge lines
+    g.lineStyle(2, 0x00ff88, 1);
+    g.beginPath();
+    for (let sx = 0; sx <= W + segW; sx += segW) {
+      const col = Math.floor((sx + this.terrainOffset) / segW);
+      const d = this.terrainData[col % this.terrainData.length];
+      if (sx === 0) g.moveTo(sx, d.topY); else g.lineTo(sx, d.topY);
+    }
+    g.strokePath();
+    g.beginPath();
+    for (let sx = 0; sx <= W + segW; sx += segW) {
+      const col = Math.floor((sx + this.terrainOffset) / segW);
+      const d = this.terrainData[col % this.terrainData.length];
+      if (sx === 0) g.moveTo(sx, d.botY); else g.lineTo(sx, d.botY);
+    }
+    g.strokePath();
+  }
+
+  update(time, delta) {
+    if (this.gameOver) return;
+
+    this.terrainOffset += SCROLL_SPEED;
+    this.fuelTimer++;
+
+    // Fuel drain
+    if (this.fuelTimer % 90 === 0) {
+      this.fuel = Math.max(0, this.fuel - 1);
+      if (this.fuel <= 0 && this.playerAlive) {
+        this._killPlayer();
+      }
+    }
+
+    // Spawn new UFOs
+    this.spawnTimer++;
+    if (this.spawnTimer % 120 === 0) {
+      const y = Phaser.Math.Between(80, H - 80);
+      this._createUFO(W + 20, y);
+      // also populate more terrain objects
+      const nextSec = this.sectionX + 30;
+      this._populateSection(this.sectionX, nextSec);
+      this.sectionX = nextSec;
+    }
+
+    this._drawTerrain();
+    this._updatePlayer();
+    this._updateEnemies();
+    this._updateBullets();
+    this._updateExplosions();
+    this._updateObjects();
+    this._updateHUD();
+  }
+
+  _updatePlayer() {
+    if (!this.playerAlive) {
+      this.respawnTimer--;
+      if (this.respawnTimer <= 0 && this.lives > 0) {
+        this.player.x = 120;
+        this.player.y = H / 2;
+        this.player.setAlpha(1);
+        this.playerAlive = true;
+        this.fuel = 100;
+        // Blink effect
+        this.tweens.add({
+          targets: this.player, alpha: 0.2, duration: 80,
+          yoyo: true, repeat: 8,
+          onComplete: () => this.player.setAlpha(1)
+        });
+      }
+      return;
+    }
+
+    const spd = 2.5;
+    if (this.keys.up.isDown)    this.player.y -= spd;
+    if (this.keys.down.isDown)  this.player.y += spd;
+    if (this.keys.left.isDown)  this.player.x -= spd * 0.6;
+    if (this.keys.right.isDown) this.player.x += spd * 0.6;
+
+    this.player.x = Phaser.Math.Clamp(this.player.x, 40, W * 0.4);
+    this.player.y = Phaser.Math.Clamp(this.player.y, 20, H - 20);
+
+    // Shooting
+    this.shootCool--;
+    this.bombCool--;
+    if (Phaser.Input.Keyboard.JustDown(this.keys.shoot) || 
+        (this.keys.shoot.isDown && this.shootCool <= 0)) {
+      this._fireBullet();
+      this.shootCool = 12;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.keys.bomb) ||
+        (this.keys.bomb.isDown && this.bombCool <= 0)) {
+      this._dropBomb();
+      this.bombCool = 20;
+    }
+
+    // Terrain collision
+    const td = this._getTerrainAt(this.player.x);
+    if (this.player.y - 8 <= td.topY || this.player.y + 8 >= td.botY) {
+      this._killPlayer();
+    }
+  }
+
+  _killPlayer() {
+    if (!this.playerAlive) return;
+    this._spawnExplosion(this.player.x, this.player.y, true);
+    this.player.setAlpha(0);
+    this.playerAlive = false;
+    this.lives--;
+    this.respawnTimer = 120;
+    if (this.lives <= 0) {
+      this._triggerGameOver();
+    }
+  }
+
+  _triggerGameOver() {
+    this.gameOver = true;
+    this.add.rectangle(W/2, H/2, 280, 100, 0x000000, 0.85).setDepth(30);
+    this.add.text(W/2, H/2 - 25, 'GAME OVER', {
+      fontSize: '36px', fontFamily: 'Courier New', color: '#ff4400',
+      stroke: '#ffff00', strokeThickness: 2
+    }).setOrigin(0.5).setDepth(31);
+    this.add.text(W/2, H/2 + 15, 'SCORE: ' + this.score, {
+      fontSize: '18px', fontFamily: 'Courier New', color: '#00ff44'
+    }).setOrigin(0.5).setDepth(31);
+    const restart = this.add.text(W/2, H/2 + 45, 'PRESS SPACE', {
+      fontSize: '14px', fontFamily: 'Courier New', color: '#ffff00'
+    }).setOrigin(0.5).setDepth(31);
+    this.tweens.add({ targets: restart, alpha: 0, duration: 400, yoyo: true, repeat: -1 });
+    this.input.keyboard.once('keydown-SPACE', () => {
+      this.scene.start('Title');
+    });
+  }
+
+  _updateEnemies() {
+    // UFOs
+    this.enemyGroup.getChildren().forEach(e => {
+      if (!e.alive) return;
+      e.x -= SCROLL_SPEED + 1;
+      e.y += e.vy;
+      const td = this._getTerrainAt(e.x);
+      if (e.y < td.topY + 10) e.vy = Math.abs(e.vy);
+      if (e.y > td.botY - 10) e.vy = -Math.abs(e.vy);
+      if (e.x < -30) { e.destroy(); return; }
+
+      // Shoot at player
+      e.shootCool--;
+      if (e.shootCool <= 0 && this.playerAlive) {
+        this._fireEnemyBullet(e.x, e.y, this.player.x, this.player.y);
+        e.shootCool = Phaser.Math.Between(80, 160);
+      }
+
+      // Collision with player
+      if (this.playerAlive && Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) < 16) {
+        this._spawnExplosion(e.x, e.y, false);
+        e.alive = false; e.destroy();
+        this._killPlayer();
+        this.score += 100;
+      }
+    });
+
+    // Rockets
+    this.rockets.getChildren().forEach(r => {
+      if (!r.alive) return;
+      r.x -= SCROLL_SPEED;
+      if (r.x < -20) { r.destroy(); return; }
+
+      r.shootCool--;
+      if (r.shootCool <= 0 && this.playerAlive) {
+        this._fireEnemyBullet(r.x, r.y - 8, this.player.x, this.player.y);
+        r.shootCool = Phaser.Math.Between(100, 200);
+      }
+    });
+  }
+
+  _updateBullets() {
+    // Player bullets
+    this.bulletGroup.getChildren().forEach(b => {
+      b.x += b.vx;
+      if (b.x > W + 10) { b.destroy(); return; }
+
+      // Hit terrain
+      const td = this._getTerrainAt(b.x);
+      if (b.y <= td.topY || b.y >= td.botY) {
+        this._spawnExplosion(b.x, b.y, false);
+        b.destroy(); return;
+      }
+
+      // Hit UFO
+      let hit = false;
+      this.enemyGroup.getChildren().forEach(e => {
+        if (!hit && e.alive && Phaser.Math.Distance.Between(b.x, b.y, e.x, e.y) < 16) {
+          this._spawnExplosion(e.x, e.y, true);
+          e.alive = false; e.destroy();
+          b.destroy(); hit = true;
+          this.score += 150;
+        }
+      });
+      if (hit) return;
+
+      // Hit rocket
+      this.rockets.getChildren().forEach(r => {
+        if (!hit && r.alive && Phaser.Math.Distance.Between(b.x, b.y, r.x, r.y) < 14) {
+          this._spawnExplosion(r.x, r.y, true);
+          r.alive = false; r.destroy();
+          b.destroy(); hit = true;
+          this.score += 80;
+        }
+      });
+      if (hit) return;
+
+      // Hit fuel cell
+      this.fuelCells.getChildren().forEach(f => {
+        if (!hit && f.alive && Phaser.Math.Distance.Between(b.x, b.y, f.x, f.y) < 14) {
+          this._spawnExplosion(f.x, f.y, false);
+          f.alive = false; f.destroy();
+          b.destroy(); hit = true;
+          this.fuel = Math.min(100, this.fuel + 25);
+          this.score += 50;
+        }
+      });
+    });
+
+    // Bombs
+    this.bombGroup.getChildren().forEach(b => {
+      b.y += b.vy;
+      b.x -= SCROLL_SPEED * 0.5;
+      const td = this._getTerrainAt(b.x);
+      if (b.y >= td.botY || b.y > H) {
+        this._spawnExplosion(b.x, b.y, true);
+        b.destroy(); return;
+      }
+      // Hit ground objects
+      let hit = false;
+      this.rockets.getChildren().forEach(r => {
+        if (!hit && r.alive && Phaser.Math.Distance.Between(b.x, b.y, r.x, r.y) < 20) {
+          this._spawnExplosion(r.x, r.y, true);
+          r.alive = false; r.destroy();
+          b.destroy(); hit = true;
+          this.score += 80;
+        }
+      });
+      if (hit) return;
+      this.fuelCells.getChildren().forEach(f => {
+        if (!hit && f.alive && Phaser.Math.Distance.Between(b.x, b.y, f.x, f.y) < 20) {
+          this._spawnExplosion(f.x, f.y, false);
+          f.alive = false; f.destroy();
+          b.destroy(); hit = true;
+          this.fuel = Math.min(100, this.fuel + 25);
+          this.score += 50;
+        }
+      });
+    });
+
+    // Enemy bullets
+    this.enemyBullets.getChildren().forEach(b => {
+      b.x += b.vx;
+      b.y += b.vy;
+      if (b.x < -10 || b.x > W + 10 || b.y < -10 || b.y > H + 10) {
+        b.destroy(); return;
+      }
+      if (this.playerAlive && Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y) < 10) {
+        this._spawnExplosion(b.x, b.y, false);
+        b.destroy();
+        this._killPlayer();
+      }
+    });
+  }
+
+  _updateExplosions() {
+    this.explosions.getChildren().forEach(p => {
+      p.x += p.vx - SCROLL_SPEED * 0.3;
+      p.y += p.vy;
+      p.vx *= 0.94;
+      p.vy *= 0.94;
+      p.life--;
+      p.setAlpha(p.life / 30);
+      if (p.life <= 0) p.destroy();
+    });
+  }
+
+  _updateObjects() {
+    this.fuelCells.getChildren().forEach(f => { f.x -= SCROLL_SPEED; });
+    this.rockets.getChildren().forEach(r => { r.x -= SCROLL_SPEED; });
+  }
+}
+
+// ===== BOOT =====
+const config = {
+  type: Phaser.AUTO,
+  width: W, height: H,
+  backgroundColor: '#000000',
+  parent: 'game-container',
+  scene: [TitleScene, GameScene],
+  render: { antialias: false },
+};
+new Phaser.Game(config);
+</script>
+</body>
+</html>
