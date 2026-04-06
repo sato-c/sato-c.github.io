@@ -1,0 +1,51 @@
+### 前提
+#### 対象
+- ゲーム系専門学校の卒業生
+- CやC++で卒業制作
+- 校内でUnityなどを使ってチーム制作も経験済み
+
+#### 流れ
+1. 現状は卒業制作をセルフレビュー中
+	- ただ、何書いて良いかわからないみたいで結構文章量はすくない
+2. そのレビュー内容を確認しながら「その内容は他人に伝わる内容か？」確認させる
+	- 自分が書いた内容を他人に説明することは必要だから
+3. 自分が直したいと感じた、直そうと思うところをリストアップ
+	- なぜそう思ったのかを明示させる
+4. 実際に直させる
+	- 直した内容はメモしてまとめる
+	- 本当にその修正でいいのかは考えさせる
+5. 直した内容を説明してもらう
+	- 必要な修正だったのかも確認する
+6. 全面的に書き直させる
+	- どういう作り方か確認して、タスクリスト形式で書かせる
+
+#### タスクリスト形式
+Cで書く場合。
+struct tagBaseObj {
+	struct tagBaseObj *prev;
+	struct tagBaseObj *next;
+	struct tagBaseObj *Sibling;
+	unsigned short action;			// 各ビットでフラグにする
+	void (*init)( struct tagBaseObj * );		// 自分自身へのポインタ
+	void (*update)( struct tagBaseObj *);
+	void (*draw)( struct tagBaseObj *);
+};
+
+typedef tagBaseObj BASEOBJ;
+
+C#とかC++ならクラスに落とし込む
+
+struct BaseObj {
+    BaseObj *prev;
+    BaseObj *next;
+    BaseObj *sibling;
+    unsigned short action;
+
+    BaseObj() : prev(nullptr), next(nullptr), sibling(nullptr), action(0) {}
+    virtual ~BaseObj() {}
+
+    virtual void init()   {}
+    virtual void update() {}
+    virtual void draw()   {}
+};
+
