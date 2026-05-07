@@ -466,6 +466,93 @@ function Legend() {
 }
 
 // ══════════════════════════════════════════════════════════
+// URL LOADER PANEL
+// ══════════════════════════════════════════════════════════
+
+function UrlLoaderPanel({ onLoad }) {
+  const [url, setUrl] = React.useState("https://raw.githubusercontent.com/");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  const handleLoad = async () => {
+    if (!url.trim()) {
+      setError("Please enter a URL");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      if (!text.trim()) throw new Error("Empty file");
+      onLoad(text);
+      setError("");
+    } catch (err) {
+      setError(err.message || "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === "Enter") handleLoad();
+  };
+
+  return (
+    <div style={{
+      padding: "8px 10px",
+      background: "#030a14",
+      borderBottom: "1px solid #0e2030",
+      display: "flex",
+      gap: "6px",
+      alignItems: "center",
+      fontSize: 10,
+    }}>
+      <input
+        type="text"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        onKeyPress={handleKeyPress}
+        placeholder="https://raw.githubusercontent.com/owner/repo/branch/file.h"
+        style={{
+          flex: 1,
+          background: "#04090f",
+          border: "1px solid #1d6080",
+          color: "#88c0d0",
+          padding: "4px 8px",
+          fontFamily: "monospace",
+          fontSize: 10,
+          outline: "none",
+        }}
+        disabled={loading}
+      />
+      <button
+        onClick={handleLoad}
+        disabled={loading}
+        style={{
+          background: loading ? "#0a1520" : "transparent",
+          border: "1px solid #1d6080",
+          color: loading ? "#1d4050" : "#3dd5f3",
+          padding: "4px 10px",
+          cursor: loading ? "default" : "pointer",
+          fontFamily: "monospace",
+          fontSize: 10,
+          letterSpacing: 1,
+          opacity: loading ? 0.6 : 1,
+        }}>
+        {loading ? "⟳ Loading..." : "⬇ Load"}
+      </button>
+      {error && (
+        <span style={{ color: "#ff7878", marginLeft: "4px" }}>
+          ✗ {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════
 
@@ -595,6 +682,9 @@ function App() {
           <span style={{ color: "#1d6080", fontSize: 14 }}>◈</span>
           <span style={{ color: "#3dd5f3", fontSize: 11, letterSpacing: 2 }}>C++ CLASS DIAGRAM</span>
         </div>
+
+        {/* URL Loader Panel */}
+        <UrlLoaderPanel onLoad={setCode} />
 
         {/* Status bar */}
         <div style={{ padding: "3px 10px", background: "#030a14",
