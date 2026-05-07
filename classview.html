@@ -388,54 +388,7 @@ function ArrowAssociation({ x1, y1, x2, y2 }) {
 // SAMPLE
 // ══════════════════════════════════════════════════════════
 
-const SAMPLE = `class Component {
-public:
-    virtual void update(float dt) = 0;
-    virtual void render() = 0;
-    virtual ~Component() {}
-    bool isActive() const;
-protected:
-    bool active;
-    int id;
-};
-
-class VideoPlayer : public Component {
-public:
-    void update(float dt) override;
-    void render() override;
-    void play(const char* file);
-    void stop();
-    bool isPlaying() const;
-private:
-    int state;
-    float currentTime;
-    int loopCount;
-};
-
-class AudioPlayer : public Component {
-public:
-    void update(float dt) override;
-    void render() override;
-    void playBGM(int id);
-    void playSE(int id);
-    void setVolume(int vol);
-private:
-    int volume;
-    int bgmId;
-};
-
-class GameManager {
-public:
-    static GameManager* getInstance();
-    void init();
-    void tick(float dt);
-    void onHit();
-    VideoPlayer* video;
-    AudioPlayer* audio;
-private:
-    int score;
-    int gameState;
-};`;
+const SAMPLE = ``;
 
 // ══════════════════════════════════════════════════════════
 // LEGEND
