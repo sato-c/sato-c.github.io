@@ -475,10 +475,11 @@ function UrlLoaderPanel({ onLoad }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [showToken, setShowToken] = React.useState(false);
+  const [showHelp, setShowHelp] = React.useState(false);
 
   const handleLoad = async () => {
     if (!url.trim()) {
-      setError("Please enter a URL");
+      setError("URLを入力してください");
       return;
     }
     setLoading(true);
@@ -495,31 +496,31 @@ function UrlLoaderPanel({ onLoad }) {
         const response = await fetch(finalUrl, options);
         if (!response.ok) {
           if (response.status === 401) {
-            throw new Error("Unauthorized - check your token");
+            throw new Error("認可が拒否されました - トークンを確認してください");
           } else if (response.status === 404) {
-            throw new Error("File not found");
+            throw new Error("ファイルが見つかりません");
           }
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
         if (data.content) {
           const text = atob(data.content);
-          if (!text.trim()) throw new Error("Empty file");
+          if (!text.trim()) throw new Error("ファイルが空です");
           onLoad(text);
         } else {
-          throw new Error("No content in response");
+          throw new Error("レスポンスにコンテンツがありません");
         }
       } else {
         // Try raw GitHub URL
         const response = await fetch(finalUrl);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const text = await response.text();
-        if (!text.trim()) throw new Error("Empty file");
+        if (!text.trim()) throw new Error("ファイルが空です");
         onLoad(text);
       }
       setError("");
     } catch (err) {
-      setError(err.message || "Failed to load");
+      setError(err.message || "読み込みに失敗しました");
     } finally {
       setLoading(false);
     }
@@ -572,19 +573,32 @@ function UrlLoaderPanel({ onLoad }) {
             letterSpacing: 1,
             opacity: loading ? 0.6 : 1,
           }}>
-          {loading ? "⟳ Loading..." : "⬇ Load"}
+          {loading ? "⟳ 読込中..." : "⬇ 読込"}
+        </button>
+        <button
+          onClick={() => setShowHelp(!showHelp)}
+          style={{
+            background: "transparent",
+            border: "1px solid #1d6080",
+            color: "#3dd5f3",
+            padding: "4px 8px",
+            cursor: "pointer",
+            fontFamily: "monospace",
+            fontSize: 11,
+          }}>
+          ?
         </button>
       </div>
       
       <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-        <label style={{ color: "#2a6070", userSelect: "none" }}>
+        <label style={{ color: "#2a6070", userSelect: "none", whiteSpace: "nowrap" }}>
           <input
             type="checkbox"
             checked={showToken}
             onChange={(e) => setShowToken(e.target.checked)}
             style={{ marginRight: "4px" }}
           />
-          GitHub Token (for private repos)
+          トークン
         </label>
         {showToken && (
           <input
@@ -611,6 +625,83 @@ function UrlLoaderPanel({ onLoad }) {
         <span style={{ color: "#ff7878" }}>
           ✗ {error}
         </span>
+      )}
+
+      {showHelp && (
+        <div style={{
+          background: "#04090f",
+          border: "1px solid #1d4050",
+          borderRadius: "4px",
+          padding: "10px",
+          color: "#88c0d0",
+          fontSize: 9,
+          lineHeight: "1.6",
+        }}>
+          <div style={{ fontWeight: "bold", marginBottom: "8px", color: "#3dd5f3" }}>
+            📚 使い方ガイド
+          </div>
+          
+          <div style={{ marginBottom: "10px" }}>
+            <div style={{ fontWeight: "bold", color: "#5ddb8c" }}>1️⃣ 公開リポジトリの場合</div>
+            <div style={{ marginLeft: "12px", marginTop: "4px" }}>
+              以下のURL形式で読み込めます：<br/>
+              <code style={{ background: "#030a14", padding: "2px 4px", borderRadius: "2px" }}>
+                https://raw.githubusercontent.com/owner/repo/branch/path/file.h
+              </code>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <div style={{ fontWeight: "bold", color: "#5ddb8c" }}>2️⃣ プライベートリポジトリの場合</div>
+            <div style={{ marginLeft: "12px", marginTop: "4px" }}>
+              <strong>ステップ1:</strong> GitHub API URLを使用<br/>
+              <code style={{ background: "#030a14", padding: "2px 4px", borderRadius: "2px", display: "block", marginTop: "2px" }}>
+                https://api.github.com/repos/owner/repo/contents/path/file.h
+              </code>
+            </div>
+            <div style={{ marginLeft: "12px", marginTop: "6px" }}>
+              <strong>ステップ2:</strong> 個人用アクセストークンを生成<br/>
+              <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+                <li>GitHub Settings → Developer settings</li>
+                <li>Personal access tokens → Tokens (classic)</li>
+                <li>「Generate new token」をクリック</li>
+                <li><code>repo</code> スコープにチェック</li>
+                <li>トークンをコピー</li>
+              </ul>
+            </div>
+            <div style={{ marginLeft: "12px", marginTop: "6px" }}>
+              <strong>ステップ3:</strong> このツールで入力<br/>
+              <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+                <li>「トークン」チェックボックスをON</li>
+                <li>パスワード欄にトークンを貼り付け</li>
+                <li>URLを入力して読込</li>
+              </ul>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "8px" }}>
+            <div style={{ fontWeight: "bold", color: "#5ddb8c" }}>📋 クラス図の見方</div>
+            <div style={{ marginLeft: "12px", marginTop: "4px" }}>
+              <strong>+ 公開:</strong> 公開メンバー (外から使える)<br/>
+              <strong># 保護:</strong> 保護メンバー (子クラスから使える)<br/>
+              <strong>- 非公開:</strong> 非公開メンバー (内部のみ)<br/>
+              <strong>↑ 仮想:</strong> 仮想メソッド<br/>
+              <strong>⊘ 純粋仮想:</strong> 実装なし<br/>
+              <strong>$ 静的:</strong> クラス変数/メソッド
+            </div>
+          </div>
+
+          <div style={{ 
+            background: "#030a14", 
+            padding: "6px 8px", 
+            borderRadius: "2px",
+            marginTop: "8px",
+            color: "#2a6070"
+          }}>
+            💡 <strong>ヒント:</strong> クラスボックスはドラッグで移動できます。
+            「自動配置」ボタンで自動レイアウト可能です。
+          </div>
+        </div>
       )}
     </div>
   );
@@ -754,9 +845,9 @@ function App() {
         <div style={{ padding: "3px 10px", background: "#030a14",
           borderBottom: "1px solid #091520", fontSize: 10,
           display: "flex", gap: 12, color: "#2a5060" }}>
-          <span>{total} classes</span>
-          <span>{totalMembers} members</span>
-          <span style={{ marginLeft: "auto" }}>edit &amp; see live</span>
+          <span>{total} クラス</span>
+          <span>{totalMembers} メンバー</span>
+          <span style={{ marginLeft: "auto" }}>編集してリアルタイム更新</span>
         </div>
 
         {/* Code editor */}
