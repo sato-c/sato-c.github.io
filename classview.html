@@ -470,9 +470,11 @@ function Legend() {
 // ══════════════════════════════════════════════════════════
 
 function UrlLoaderPanel({ onLoad }) {
-  const [url, setUrl] = React.useState("https://raw.githubusercontent.com/");
+  const [url, setUrl] = React.useState("https://api.github.com/repos/owner/repo/contents/path/file.h");
+  const [token, setToken] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [showToken, setShowToken] = React.useState(false);
 
   const handleLoad = async () => {
     if (!url.trim()) {
@@ -482,11 +484,39 @@ function UrlLoaderPanel({ onLoad }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text();
-      if (!text.trim()) throw new Error("Empty file");
-      onLoad(text);
+      let finalUrl = url.trim();
+      const options = {};
+
+      // Check if it's a GitHub API URL
+      if (finalUrl.includes("api.github.com")) {
+        if (token) {
+          options.headers = { "Authorization": `token ${token}` };
+        }
+        const response = await fetch(finalUrl, options);
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error("Unauthorized - check your token");
+          } else if (response.status === 404) {
+            throw new Error("File not found");
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.content) {
+          const text = atob(data.content);
+          if (!text.trim()) throw new Error("Empty file");
+          onLoad(text);
+        } else {
+          throw new Error("No content in response");
+        }
+      } else {
+        // Try raw GitHub URL
+        const response = await fetch(finalUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const text = await response.text();
+        if (!text.trim()) throw new Error("Empty file");
+        onLoad(text);
+      }
       setError("");
     } catch (err) {
       setError(err.message || "Failed to load");
@@ -505,46 +535,80 @@ function UrlLoaderPanel({ onLoad }) {
       background: "#030a14",
       borderBottom: "1px solid #0e2030",
       display: "flex",
+      flexDirection: "column",
       gap: "6px",
-      alignItems: "center",
       fontSize: 10,
     }}>
-      <input
-        type="text"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        onKeyPress={handleKeyPress}
-        placeholder="https://raw.githubusercontent.com/owner/repo/branch/file.h"
-        style={{
-          flex: 1,
-          background: "#04090f",
-          border: "1px solid #1d6080",
-          color: "#88c0d0",
-          padding: "4px 8px",
-          fontFamily: "monospace",
-          fontSize: 10,
-          outline: "none",
-        }}
-        disabled={loading}
-      />
-      <button
-        onClick={handleLoad}
-        disabled={loading}
-        style={{
-          background: loading ? "#0a1520" : "transparent",
-          border: "1px solid #1d6080",
-          color: loading ? "#1d4050" : "#3dd5f3",
-          padding: "4px 10px",
-          cursor: loading ? "default" : "pointer",
-          fontFamily: "monospace",
-          fontSize: 10,
-          letterSpacing: 1,
-          opacity: loading ? 0.6 : 1,
-        }}>
-        {loading ? "⟳ Loading..." : "⬇ Load"}
-      </button>
+      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="https://api.github.com/repos/owner/repo/contents/path/file.h"
+          style={{
+            flex: 1,
+            background: "#04090f",
+            border: "1px solid #1d6080",
+            color: "#88c0d0",
+            padding: "4px 8px",
+            fontFamily: "monospace",
+            fontSize: 10,
+            outline: "none",
+          }}
+          disabled={loading}
+        />
+        <button
+          onClick={handleLoad}
+          disabled={loading}
+          style={{
+            background: loading ? "#0a1520" : "transparent",
+            border: "1px solid #1d6080",
+            color: loading ? "#1d4050" : "#3dd5f3",
+            padding: "4px 10px",
+            cursor: loading ? "default" : "pointer",
+            fontFamily: "monospace",
+            fontSize: 10,
+            letterSpacing: 1,
+            opacity: loading ? 0.6 : 1,
+          }}>
+          {loading ? "⟳ Loading..." : "⬇ Load"}
+        </button>
+      </div>
+      
+      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <label style={{ color: "#2a6070", userSelect: "none" }}>
+          <input
+            type="checkbox"
+            checked={showToken}
+            onChange={(e) => setShowToken(e.target.checked)}
+            style={{ marginRight: "4px" }}
+          />
+          GitHub Token (for private repos)
+        </label>
+        {showToken && (
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="ghp_xxxxxxxxxxxxx"
+            style={{
+              flex: 1,
+              background: "#04090f",
+              border: "1px solid #1d6080",
+              color: "#88c0d0",
+              padding: "4px 8px",
+              fontFamily: "monospace",
+              fontSize: 10,
+              outline: "none",
+            }}
+          />
+        )}
+      </div>
+
       {error && (
-        <span style={{ color: "#ff7878", marginLeft: "4px" }}>
+        <span style={{ color: "#ff7878" }}>
           ✗ {error}
         </span>
       )}
