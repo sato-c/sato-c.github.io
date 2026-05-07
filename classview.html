@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>C++ Class Diagram</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+
+// ══════════════════════════════════════════════════════════
+// PARSER
+// ══════════════════════════════════════════════════════════
+
+function stripComments(code) {
+  return code
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+function findBodyEnd(str, start) {
+  let depth = 0;
+  for (let i = start; i < str.length; i++) {
+    if (str[i] === "{") depth++;
+    else if (str[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function parseClassBody(body, isStruct) {
+  const members = { public: [], protected: [], private: [] };
+
+  // Split by access specifier positions
+  const specRe = /\b(public|protected|private)\s*:/g;
+  const specs = [{ acc: isStruct ? "public" : "private", pos: 0 }];
+  let sm;
+  while ((sm = specRe.exec(body)) !== null) {
+    specs.push({ acc: sm[1], pos: sm.index + sm[0].length });
+  }
+  specs.push({ acc: null, pos: body.length });
+
+  for (let i = 0; i < specs.length - 1; i++) {
+    const section = body.slice(specs[i].pos, specs[i + 1].pos);
+    const acc = specs[i].acc;
+    const decls = section.split(";").map(d => d.replace(/\s+/g, " ").trim()).filter(Boolean);
+
+    for (const decl of decls) {
+      if (!decl || /^[{}]/.test(decl)) continue;
+      if (/^(?:class|struct|enum|union|friend|typedef|using|template|#)\b/.test(decl)) continue;
+      if (!/\w/.test(decl)) continue;
+
+      const isVirtual = /\bvirtual\b/.test(decl);
+      const isStatic  = /\bstatic\b/.test(decl);
+      const isPure    = /=\s*0\s*$/.test(decl);
+      const isOverride = /\boverride\b/.test(decl);
+
+      if (/\(/.test(decl)) {
+        // Method
+        const mMatch = decl.match(/(\w+)\s*\(([^)]*)\)/);
+        if (!mMatch) continue;
+        const methodName = mMatch[1];
+        if (["if", "for", "while", "switch", "catch", "sizeof"].includes(methodName)) continue;
+
+        const rawParams = mMatch[2].trim();
+        const shortParams = rawParams
+          ? rawParams.split(",").map(p => {
+              const t = p.trim().split(/\s+/).filter(Boolean);
+              return t.length > 1 ? t[t.length - 1].replace(/[*&]/g, "") : t[0] || "";
+            }).filter(Boolean).join(", ")
+          : "";
+
+        const beforeName = decl.slice(0, decl.indexOf(methodName + "(")).trim();
+        const retType = beforeName
+          .replace(/\b(?:virtual|static|inline|explicit|constexpr|nodiscard)\b/g, "")
+          .trim().split(/\s+/).filter(Boolean).join(" ") || "void";
+
+        const prefix = isStatic ? "$ " : isPure ? "⊘ " : isVirtual ? "↑ " : "";
+
+        members[acc].push({
+          kind: "method",
+          name: methodName,
+          label: `${prefix}${methodName}(${shortParams}) : ${retType.split(/[:<>]/).pop().trim()}`,
+          isVirtual, isStatic, isPure, isOverride,
+        });
+      } else {
+        // Field
+        if (!/\w+\s+\S/.test(decl)) continue;
+        const cleaned = decl
+          .replace(/\b(?:static|mutable|const|volatile)\b/g, "")
+          .replace(/=.*$/, "").trim();
+        const parts = cleaned.split(/\s+/).filter(Boolean);
+        if (parts.length < 2) continue;
+
+        const rawName = parts[parts.length - 1];
+        const fieldName = rawName.replace(/[*&[\]]/g, "").trim();
+        if (!fieldName || /^\d/.test(fieldName)) continue;
+
+        const type = parts.slice(0, -1).join(" ").trim();
+        const prefix = isStatic ? "$ " : "";
+
+        members[acc].push({
+          kind: "field",
+          name: fieldName,
+          label: `${prefix}${fieldName} : ${type}`,
+          type,
+          isStatic,
+        });
+      }
+    }
+  }
+
+  return members;
+}
+
+function parseCpp(code) {
+  const clean = stripComments(code);
+  const classes = [];
+  const re = /(class|struct)\s+(\w+)\s*(?:final\s*)?(?::\s*((?:[\w\s:*&<>]|,)+?))?\s*\{/g;
+  let m;
+
+  while ((m = re.exec(clean)) !== null) {
+    const kw = m[1], name = m[2];
+    if (["if", "for", "while", "else", "do"].includes(name)) continue;
+
+    const inheritStr = m[3] || "";
+    const braceStart = clean.indexOf("{", m.index + m[0].length - 1);
+    const braceEnd = findBodyEnd(clean, braceStart);
+    if (braceEnd < 0) continue;
+
+    const body = clean.slice(braceStart + 1, braceEnd);
+    const members = parseClassBody(body, kw === "struct");
+
+    const bases = inheritStr.trim()
+      ? inheritStr.split(",").reduce((acc, part) => {
+          const bm = part.trim().match(/(?:(public|protected|private)\s+)?(\w[\w:]*)/);
+          if (bm && !["virtual", "public", "protected", "private"].includes(bm[2])) {
+            acc.push({ name: bm[2], access: bm[1] || (kw === "struct" ? "public" : "private") });
+          }
+          return acc;
+        }, [])
+      : [];
+
+    classes.push({ name, kw, bases, members });
+  }
+
+  return classes;
+}
+
+// ══════════════════════════════════════════════════════════
+// LAYOUT
+// ══════════════════════════════════════════════════════════
+
+const FS     = 11;
+const LH     = 15;
+const PAD    = 9;
+const CW     = 6.5;  // monospace char width at FS=11
+const MIN_W  = 150;
+const HDR_H  = 36;
+const H_GAP  = 60;
+const V_GAP  = 80;
+
+function getBoxSize(cls) {
+  const allLabels = [
+    ...cls.members.public.map(m => `+ ${m.label}`),
+    ...cls.members.protected.map(m => `# ${m.label}`),
+    ...cls.members.private.map(m => `- ${m.label}`),
+  ];
+  const maxChars = Math.max(
+    cls.name.length + 4,
+    ...allLabels.map(l => l.length),
+    14
+  );
+  const w = Math.max(MIN_W, maxChars * CW + PAD * 2 + 8);
+
+  const numDividers = [cls.members.public, cls.members.protected, cls.members.private]
+    .filter(s => s.length > 0).length - 1;
+
+  const allCount = cls.members.public.length + cls.members.protected.length + cls.members.private.length;
+  const h = HDR_H + PAD + allCount * LH + Math.max(0, numDividers) * 4 + PAD;
+
+  return { w, h: Math.max(55, h) };
+}
+
+function computeLayout(classes) {
+  if (!classes.length) return {};
+  const nameSet = new Set(classes.map(c => c.name));
+  const levels = {};
+  const computing = new Set();
+
+  function getLevel(name) {
+    if (levels[name] !== undefined) return levels[name];
+    if (computing.has(name)) return 0;
+    computing.add(name);
+    const cls = classes.find(c => c.name === name);
+    if (!cls) { computing.delete(name); return (levels[name] = 0); }
+    const pd = cls.bases.filter(b => nameSet.has(b.name)).map(b => getLevel(b.name));
+    computing.delete(name);
+    return (levels[name] = pd.length ? Math.max(...pd) + 1 : 0);
+  }
+  classes.forEach(c => getLevel(c.name));
+
+  const byLevel = {};
+  classes.forEach(c => {
+    const lv = levels[c.name] ?? 0;
+    (byLevel[lv] = byLevel[lv] || []).push(c);
+  });
+
+  const dims = Object.fromEntries(classes.map(c => [c.name, getBoxSize(c)]));
+  const positions = {};
+  Object.keys(byLevel).map(Number).sort((a, b) => a - b).reduce((y, lv) => {
+    const row = byLevel[lv];
+    row.reduce((x, c) => {
+      positions[c.name] = { x, y };
+      return x + dims[c.name].w + H_GAP;
+    }, 30);
+    return y + Math.max(...row.map(c => dims[c.name].h)) + V_GAP;
+  }, 30);
+
+  return positions;
+}
+
+// ══════════════════════════════════════════════════════════
+// EDGE HELPERS
+// ══════════════════════════════════════════════════════════
+
+function getEdgePoint(pos, size, toCx, toCy) {
+  const cx = pos.x + size.w / 2, cy = pos.y + size.h / 2;
+  const dx = toCx - cx, dy = toCy - cy;
+  if (!dx && !dy) return { x: cx, y: cy };
+  const hw = size.w / 2, hh = size.h / 2;
+  if (Math.abs(dx) * hh >= Math.abs(dy) * hw) {
+    const s = dx > 0 ? 1 : -1;
+    return { x: cx + hw * s, y: cy + dy * (hw * s / dx) };
+  } else {
+    const s = dy > 0 ? 1 : -1;
+    return { x: cx + dx * (hh * s / dy), y: cy + hh * s };
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// SVG COMPONENTS
+// ══════════════════════════════════════════════════════════
+
+const C = {
+  bg:        "#060d18",
+  border:    "#1d6080",
+  hdrBg:     "#030a14",
+  hdrBorder: "#1d6080",
+  name:      "#3dd5f3",
+  nameAbstr: "#f0c060",
+  stereo:    "#2a6070",
+  pub:       "#5ddb8c",
+  prot:      "#f0a050",
+  priv:      "#c06070",
+  field:     "#8ab8cc",
+  method:    "#6abcdc",
+  pureM:     "#ff7878",
+  divider:   "#0e2030",
+  shadow:    "rgba(0,0,0,0.55)",
+  arrow:     "#2a8aaa",
+  assoc:     "#2a5060",
+  grid:      "#080f1a",
+};
+
+function ClassBox({ cls, pos, size, onMouseDown }) {
+  const { w, h } = size;
+  const isAbstract = [...cls.members.public, ...cls.members.protected, ...cls.members.private]
+    .some(m => m.isPure);
+
+  const sections = [
+    { items: cls.members.public,    sym: "+", symColor: C.pub  },
+    { items: cls.members.protected, sym: "#", symColor: C.prot },
+    { items: cls.members.private,   sym: "-", symColor: C.priv },
+  ].filter(s => s.items.length > 0);
+
+  const maxChars = Math.floor((w - PAD * 2 - 4) / CW);
+  let iy = HDR_H + PAD;
+  const itemEls = [];
+
+  sections.forEach((s, si) => {
+    if (si > 0) {
+      itemEls.push(
+        <line key={`div${si}`} x1={1} y1={iy - 2} x2={w - 1} y2={iy - 2}
+          stroke={C.divider} strokeWidth={1.5} />
+      );
+      iy += 2;
+    }
+    s.items.forEach((m, mi) => {
+      const full = `${s.sym} ${m.label}`;
+      const txt  = full.length > maxChars ? full.slice(0, maxChars - 1) + "…" : full;
+      const col  = m.isPure ? C.pureM : m.kind === "method" ? C.method : C.field;
+      itemEls.push(
+        <text key={`${si}-${mi}`} x={PAD + 2} y={iy + LH * 0.78}
+          fill={col} fontSize={FS} fontFamily="'Courier New', monospace"
+          fontStyle={m.isPure ? "italic" : "normal"}>
+          {txt}
+        </text>
+      );
+      iy += LH;
+    });
+  });
+
+  const stereotype = isAbstract ? "«abstract»" : `«${cls.kw}»`;
+  const displayName = cls.name.length > Math.floor((w - PAD * 2) / (FS * 0.7))
+    ? cls.name.slice(0, Math.floor((w - PAD * 2) / (FS * 0.7)) - 1) + "…"
+    : cls.name;
+
+  return (
+    <g transform={`translate(${pos.x},${pos.y})`}
+      onMouseDown={e => onMouseDown(e, cls.name)}
+      style={{ cursor: "grab", userSelect: "none" }}>
+
+      {/* Shadow */}
+      <rect x={5} y={5} width={w} height={h} rx={4} fill={C.shadow} />
+
+      {/* Body */}
+      <rect width={w} height={h} rx={4} fill={C.bg} stroke={C.border} strokeWidth={1.5} />
+
+      {/* Header bg */}
+      <path d={`M4,0 H${w - 4} Q${w},0 ${w},4 V${HDR_H} H0 V4 Q0,0 4,0 Z`} fill={C.hdrBg} />
+      <line x1={0} y1={HDR_H} x2={w} y2={HDR_H} stroke={C.hdrBorder} strokeWidth={1} />
+
+      {/* Highlight line */}
+      <line x1={1} y1={1} x2={w - 1} y2={1} stroke="rgba(61,213,243,0.12)" strokeWidth={1.5} />
+
+      {/* Stereotype */}
+      <text x={w / 2} y={HDR_H * 0.3} textAnchor="middle" dominantBaseline="middle"
+        fill={isAbstract ? "#8a7030" : C.stereo} fontSize={FS - 1}
+        fontFamily="'Courier New', monospace">
+        {stereotype}
+      </text>
+
+      {/* Name */}
+      <text x={w / 2} y={HDR_H * 0.72} textAnchor="middle" dominantBaseline="middle"
+        fill={isAbstract ? C.nameAbstr : C.name}
+        fontSize={FS + 2} fontWeight="bold"
+        fontFamily="'Courier New', monospace"
+        fontStyle={isAbstract ? "italic" : "normal"}>
+        {displayName}
+      </text>
+
+      {/* Members */}
+      {itemEls}
+    </g>
+  );
+}
+
+function ArrowInheritance({ x1, y1, x2, y2 }) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 2) return null;
+  const nx = dx / len, ny = dy / len;
+  const A = 13;
+  const bx = x2 - nx * A, by = y2 - ny * A;
+  const px = -ny * A * 0.5, py = nx * A * 0.5;
+  return (
+    <g>
+      <line x1={x1} y1={y1} x2={bx} y2={by} stroke={C.arrow} strokeWidth={1.5} />
+      <polygon points={`${x2},${y2} ${bx + px},${by + py} ${bx - px},${by - py}`}
+        fill={C.bg} stroke={C.arrow} strokeWidth={1.5} />
+    </g>
+  );
+}
+
+function ArrowAssociation({ x1, y1, x2, y2 }) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 2) return null;
+  const nx = dx / len, ny = dy / len;
+  const A = 10;
+  const px = -ny * A * 0.5, py = nx * A * 0.5;
+  const ax = x2 - nx * A, ay = y2 - ny * A;
+  return (
+    <g>
+      <line x1={x1} y1={y1} x2={x2} y2={y2}
+        stroke={C.assoc} strokeWidth={1.2} strokeDasharray="5,3" />
+      <polyline
+        points={`${ax + px},${ay + py} ${x2},${y2} ${ax - px},${ay - py}`}
+        fill="none" stroke={C.assoc} strokeWidth={1.2} />
+    </g>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// SAMPLE
+// ══════════════════════════════════════════════════════════
+
+const SAMPLE = `class Component {
+public:
+    virtual void update(float dt) = 0;
+    virtual void render() = 0;
+    virtual ~Component() {}
+    bool isActive() const;
+protected:
+    bool active;
+    int id;
+};
+
+class VideoPlayer : public Component {
+public:
+    void update(float dt) override;
+    void render() override;
+    void play(const char* file);
+    void stop();
+    bool isPlaying() const;
+private:
+    int state;
+    float currentTime;
+    int loopCount;
+};
+
+class AudioPlayer : public Component {
+public:
+    void update(float dt) override;
+    void render() override;
+    void playBGM(int id);
+    void playSE(int id);
+    void setVolume(int vol);
+private:
+    int volume;
+    int bgmId;
+};
+
+class GameManager {
+public:
+    static GameManager* getInstance();
+    void init();
+    void tick(float dt);
+    void onHit();
+    VideoPlayer* video;
+    AudioPlayer* audio;
+private:
+    int score;
+    int gameState;
+};`;
+
+// ══════════════════════════════════════════════════════════
+// LEGEND
+// ══════════════════════════════════════════════════════════
+
+function Legend() {
+  const items = [
+    { color: C.pub,    label: "+  public"     },
+    { color: C.prot,   label: "#  protected"  },
+    { color: C.priv,   label: "-  private"    },
+    { color: C.method, label: "↑  virtual"    },
+    { color: C.pureM,  label: "⊘  pure virt" },
+    { color: "#aaa",   label: "$  static"     },
+  ];
+  return (
+    <div style={{
+      display: "flex", flexWrap: "wrap", gap: "6px 14px",
+      padding: "5px 10px", background: "#03080f",
+      borderTop: "1px solid #0e2030", fontSize: 10,
+    }}>
+      {items.map(it => (
+        <span key={it.label} style={{ color: it.color }}>{it.label}</span>
+      ))}
+      <span style={{ color: "#2a8aaa", marginLeft: 8 }}>▷ 継承</span>
+      <span style={{ color: "#2a5060" }}>┄▷ 関連</span>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// MAIN APP
+// ══════════════════════════════════════════════════════════
+
+export default function App() {
+  const [code, setCode]         = useState(SAMPLE);
+  const [positions, setPositions] = useState(null);
+  const svgRef  = useRef(null);
+  const dragRef = useRef(null);
+
+  const classes = useMemo(() => {
+    try { return parseCpp(code); } catch { return []; }
+  }, [code]);
+
+  const dims = useMemo(
+    () => Object.fromEntries(classes.map(c => [c.name, getBoxSize(c)])),
+    [classes]
+  );
+
+  useEffect(() => { setPositions(computeLayout(classes)); }, [classes]);
+
+  // Build edges
+  const edges = useMemo(() => {
+    if (!positions || !classes.length) return [];
+    const nameSet = new Set(classes.map(c => c.name));
+    const assocSeen = new Set();
+    const result = [];
+
+    classes.forEach(cls => {
+      const cp = positions[cls.name], cs = dims[cls.name];
+      if (!cp) return;
+      const ccx = cp.x + cs.w / 2, ccy = cp.y + cs.h / 2;
+
+      // Inheritance arrows
+      cls.bases.filter(b => nameSet.has(b.name)).forEach(b => {
+        const pp = positions[b.name], ps = dims[b.name];
+        if (!pp) return;
+        const pcx = pp.x + ps.w / 2, pcy = pp.y + ps.h / 2;
+        result.push({
+          type: "inheritance",
+          ...getEdgePoint(cp, cs, pcx, pcy),
+          x2: getEdgePoint(pp, ps, ccx, ccy).x,
+          y2: getEdgePoint(pp, ps, ccx, ccy).y,
+        });
+      });
+
+      // Association arrows (pointer/ref members to known classes)
+      [...cls.members.public, ...cls.members.protected, ...cls.members.private]
+        .filter(m => m.kind === "field")
+        .forEach(m => {
+          const rawType = (m.type || "").replace(/[*&[\]<>]/g, " ").trim();
+          const tokens = rawType.split(/\s+/);
+          for (const tok of tokens) {
+            if (nameSet.has(tok) && tok !== cls.name) {
+              const key = [cls.name, tok].sort().join("↔");
+              if (assocSeen.has(key)) continue;
+              assocSeen.add(key);
+              const tp = positions[tok], ts = dims[tok];
+              if (!tp) continue;
+              const tcx = tp.x + ts.w / 2, tcy = tp.y + ts.h / 2;
+              const from = getEdgePoint(cp, cs, tcx, tcy);
+              const to   = getEdgePoint(tp, ts, ccx, ccy);
+              result.push({ type: "association", x1: from.x, y1: from.y, x2: to.x, y2: to.y });
+            }
+          }
+        });
+    });
+
+    return result;
+  }, [classes, positions, dims]);
+
+  // Canvas size
+  const svgSize = useMemo(() => {
+    if (!positions || !classes.length) return { w: 800, h: 500 };
+    let maxX = 600, maxY = 400;
+    classes.forEach(c => {
+      const p = positions[c.name], s = dims[c.name];
+      if (p) { maxX = Math.max(maxX, p.x + s.w + 40); maxY = Math.max(maxY, p.y + s.h + 40); }
+    });
+    return { w: maxX, h: maxY };
+  }, [positions, classes, dims]);
+
+  // Drag
+  const handleBoxDown = useCallback((e, name) => {
+    e.stopPropagation();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const sp = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const p  = positions?.[name] || { x: 0, y: 0 };
+    dragRef.current = { name, sx: sp.x, sy: sp.y, ox: p.x, oy: p.y };
+    e.preventDefault();
+  }, [positions]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!dragRef.current) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const sp = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const { name, sx, sy, ox, oy } = dragRef.current;
+    setPositions(prev => ({
+      ...prev,
+      [name]: { x: Math.max(0, ox + sp.x - sx), y: Math.max(0, oy + sp.y - sy) },
+    }));
+  }, []);
+
+  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
+
+  const total = classes.length;
+  const totalMembers = classes.reduce((n, c) =>
+    n + c.members.public.length + c.members.protected.length + c.members.private.length, 0);
+
+  return (
+    <div style={{ display: "flex", height: "100vh", background: "#04090f",
+      fontFamily: "'Courier New', monospace", color: "#80b0c8" }}>
+
+      {/* ── Left Panel ───────────────────────────────── */}
+      <div style={{ width: "38%", display: "flex", flexDirection: "column",
+        borderRight: "1px solid #0e2030" }}>
+
+        {/* Title bar */}
+        <div style={{ padding: "7px 12px", background: "#030a14",
+          borderBottom: "1px solid #0e2030",
+          display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: "#1d6080", fontSize: 14 }}>◈</span>
+          <span style={{ color: "#3dd5f3", fontSize: 11, letterSpacing: 2 }}>C++ CLASS DIAGRAM</span>
+        </div>
+
+        {/* Status bar */}
+        <div style={{ padding: "3px 10px", background: "#030a14",
+          borderBottom: "1px solid #091520", fontSize: 10,
+          display: "flex", gap: 12, color: "#2a5060" }}>
+          <span>{total} classes</span>
+          <span>{totalMembers} members</span>
+          <span style={{ marginLeft: "auto" }}>edit &amp; see live</span>
+        </div>
+
+        {/* Code editor */}
+        <textarea value={code} onChange={e => setCode(e.target.value)}
+          spellCheck={false}
+          style={{ flex: 1, background: "#04090f", color: "#88c0d0",
+            border: "none", outline: "none", resize: "none",
+            padding: "12px", fontSize: 12,
+            fontFamily: "'Courier New', monospace", lineHeight: 1.55 }} />
+
+        <Legend />
+      </div>
+
+      {/* ── Right Panel ──────────────────────────────── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+        {/* Toolbar */}
+        <div style={{ padding: "5px 12px", background: "#030a14",
+          borderBottom: "1px solid #0e2030",
+          display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 10 }}>
+          <span style={{ color: "#1d4050" }}>ドラッグで移動 — リアルタイムパース</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setPositions(computeLayout(classes))}
+              style={{ background: "transparent", border: "1px solid #1d4050",
+                color: "#3dd5f3", padding: "2px 10px", cursor: "pointer",
+                fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>
+              ⟳ 自動配置
+            </button>
+          </div>
+        </div>
+
+        {/* SVG canvas */}
+        <div style={{ flex: 1, overflow: "auto", background: "#04090f" }}>
+          <svg ref={svgRef}
+            width={svgSize.w} height={svgSize.h}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}>
+
+            <defs>
+              <pattern id="g1" width={20} height={20} patternUnits="userSpaceOnUse">
+                <path d="M20,0 L0,0 0,20" fill="none" stroke={C.grid} strokeWidth={0.5} />
+              </pattern>
+              <pattern id="g2" width={100} height={100} patternUnits="userSpaceOnUse">
+                <rect width={100} height={100} fill="url(#g1)" />
+                <path d="M100,0 L0,0 0,100" fill="none" stroke="#090f1a" strokeWidth={1} />
+              </pattern>
+            </defs>
+
+            <rect width="100%" height="100%" fill="url(#g2)" />
+
+            {/* Edges (drawn under boxes) */}
+            {edges.map((e, i) =>
+              e.type === "inheritance"
+                ? <ArrowInheritance key={i} {...e} />
+                : <ArrowAssociation key={i} {...e} />
+            )}
+
+            {/* Boxes */}
+            {positions && classes.map(cls => (
+              <ClassBox key={cls.name} cls={cls}
+                pos={positions[cls.name] || { x: 30, y: 30 }}
+                size={dims[cls.name]}
+                onMouseDown={handleBoxDown} />
+            ))}
+
+            {/* Empty state */}
+            {classes.length === 0 && (
+              <text x={40} y={60} fill="#1a3040" fontSize={13}
+                fontFamily="monospace">
+                左のエディタに C++ コードを入力してください
+              </text>
+            )}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
