@@ -469,25 +469,25 @@ function Legend() {
 // MAIN APP
 // ══════════════════════════════════════════════════════════
 
-export default function App() {
-  const [code, setCode]         = useState(SAMPLE);
-  const [positions, setPositions] = useState(null);
-  const svgRef  = useRef(null);
-  const dragRef = useRef(null);
+function App() {
+  const [code, setCode]         = React.useState(SAMPLE);
+  const [positions, setPositions] = React.useState(null);
+  const svgRef  = React.useRef(null);
+  const dragRef = React.useRef(null);
 
-  const classes = useMemo(() => {
+  const classes = React.useMemo(() => {
     try { return parseCpp(code); } catch { return []; }
   }, [code]);
 
-  const dims = useMemo(
+  const dims = React.useMemo(
     () => Object.fromEntries(classes.map(c => [c.name, getBoxSize(c)])),
     [classes]
   );
 
-  useEffect(() => { setPositions(computeLayout(classes)); }, [classes]);
+  React.useEffect(() => { setPositions(computeLayout(classes)); }, [classes]);
 
   // Build edges
-  const edges = useMemo(() => {
+  const edges = React.useMemo(() => {
     if (!positions || !classes.length) return [];
     const nameSet = new Set(classes.map(c => c.name));
     const assocSeen = new Set();
@@ -537,7 +537,7 @@ export default function App() {
   }, [classes, positions, dims]);
 
   // Canvas size
-  const svgSize = useMemo(() => {
+  const svgSize = React.useMemo(() => {
     if (!positions || !classes.length) return { w: 800, h: 500 };
     let maxX = 600, maxY = 400;
     classes.forEach(c => {
@@ -548,7 +548,7 @@ export default function App() {
   }, [positions, classes, dims]);
 
   // Drag
-  const handleBoxDown = useCallback((e, name) => {
+  const handleBoxDown = React.useCallback((e, name) => {
     e.stopPropagation();
     const svg = svgRef.current;
     if (!svg) return;
@@ -560,7 +560,7 @@ export default function App() {
     e.preventDefault();
   }, [positions]);
 
-  const handleMouseMove = useCallback((e) => {
+  const handleMouseMove = React.useCallback((e) => {
     if (!dragRef.current) return;
     const svg = svgRef.current;
     if (!svg) return;
@@ -574,7 +574,7 @@ export default function App() {
     }));
   }, []);
 
-  const handleMouseUp = useCallback(() => { dragRef.current = null; }, []);
+  const handleMouseUp = React.useCallback(() => { dragRef.current = null; }, []);
 
   const total = classes.length;
   const totalMembers = classes.reduce((n, c) =>
@@ -682,7 +682,6 @@ export default function App() {
     </div>
   );
 }
-
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
