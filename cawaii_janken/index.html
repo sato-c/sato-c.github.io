@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Go (WASM) じゃんけんゲーム</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Maru Gothic ProN', 'Quicksand', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-color: #f7f1e3;
+    }
+    .game-container {
+      display: flex;
+      width: 920px;
+      height: 620px;
+      background: #ffffff;
+      border: 4px solid #2d3436;
+      border-radius: 20px;
+      box-shadow: 0 10px 0 #2d3436;
+      overflow: hidden;
+    }
+    .main-area {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+      border-right: 4px solid #2d3436;
+      background: #fffdf9;
+    }
+    .section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-bottom: 3px dashed #dcdde1;
+      position: relative;
+    }
+    .section:last-child { border-bottom: none; }
+    .signal-text {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: #2d3436;
+    }
+    .hand-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px 15px;
+      border: 3px solid #dcdde1;
+      border-radius: 16px;
+      background: #ffffff;
+      transition: all 0.15s ease;
+    }
+    .hand-card.selected {
+      border-color: #ff6b6b;
+      background: #ffeaa7;
+      transform: translateY(-4px);
+      box-shadow: 0 6px 0 #2d3436;
+    }
+    .player-hands { display: flex; gap: 15px; }
+    .key-label {
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: #2d3436;
+      margin-top: 5px;
+    }
+    .history-area {
+      flex: 1;
+      padding: 20px;
+      background: #f1f2f6;
+    }
+    .history-area h3 {
+      text-align: center;
+      margin-bottom: 15px;
+      color: #2d3436;
+      font-size: 1.3rem;
+    }
+    table { width: 100%; border-collapse: collapse; text-align: center; background: #fff; border-radius: 10px; overflow: hidden; border: 2px solid #2d3436; }
+    th, td { padding: 10px; border-bottom: 1px solid #dcdde1; font-size: 0.95rem; }
+    th { background: #ffeaa7; color: #2d3436; }
+    .instruction {
+      font-size: 0.85rem;
+      color: #57606f;
+      margin-top: 20px;
+      text-align: center;
+      line-height: 1.6;
+      background: #fff;
+      padding: 10px;
+      border-radius: 10px;
+      border: 2px solid #2d3436;
+    }
+  </style>
+
+  <!-- Go WASM インポート用 JavaScript -->
+  <script src="wasm_exec.js"></script>
+  <script>
+    const go = new Go();
+    WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+      go.run(result.instance);
+    });
+  </script>
+</head>
+<body>
+
+<div class="game-container">
+  <div class="main-area">
+    <!-- 1. 合図 / 勝敗結果 -->
+    <div class="section">
+      <div id="signal" class="signal-text">スペースキーで開始</div>
+      <div id="result"></div>
+    </div>
+
+    <!-- 2. コンピュータの手 -->
+    <div class="section">
+      <div id="com-hand-container">
+        <!-- SVGがダイナミックに挿入されます -->
+        <svg width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#f1f2f6" stroke="#2d3436" stroke-width="4"/></svg>
+      </div>
+    </div>
+
+    <!-- 3. 自分の手選択 -->
+    <div class="section">
+      <div class="player-hands">
+        <div class="hand-card" id="card-gu">
+          <svg width="70" height="70" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="42" fill="#FF8A65" stroke="#2D3436" stroke-width="4"/>
+            <circle cx="50" cy="50" r="28" fill="#FFE0B2" stroke="#2D3436" stroke-width="3"/>
+          </svg>
+          <span class="key-label">S (ぐー)</span>
+        </div>
+        <div class="hand-card" id="card-choki">
+          <svg width="70" height="70" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="42" fill="#4FC3F7" stroke="#2D3436" stroke-width="4"/>
+            <path d="M 38 30 Q 38 65 50 65 Q 62 65 62 30" fill="#E1F5FE" stroke="#2D3436" stroke-width="3"/>
+          </svg>
+          <span class="key-label">G (ちょき)</span>
+        </div>
+        <div class="hand-card" id="card-pa">
+          <svg width="70" height="70" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="42" fill="#81C784" stroke="#2D3436" stroke-width="4"/>
+            <circle cx="50" cy="50" r="25" fill="#E8F5E9" stroke="#2D3436" stroke-width="3"/>
+          </svg>
+          <span class="key-label">K (ぱー)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 履歴表示 -->
+  <div class="history-area">
+    <h3>過去5戦の履歴</h3>
+    <table>
+      <thead>
+        <tr><th>回</th><th>COM</th><th>人間</th><th>結果</th></tr>
+      </thead>
+      <tbody id="history-body"></tbody>
+    </table>
+    <div class="instruction">
+      【操作方法】<br>
+      <b>[Space]</b>：じゃんけん開始<br>
+      <b>[S]</b>：ぐー / <b>[G]</b>：ちょき / <b>[K]</b>：ぱー
+    </div>
+  </div>
+</div>
+
+<!-- 隠しSVGテンプレート（Go側からパーツとして使用） -->
+<div style="display:none;">
+  <div id="svg-gu">
+    <svg width="100" height="100" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="42" fill="#FF8A65" stroke="#2D3436" stroke-width="4"/>
+      <circle cx="50" cy="50" r="28" fill="#FFE0B2" stroke="#2D3436" stroke-width="3"/>
+    </svg>
+  </div>
+  <div id="svg-choki">
+    <svg width="100" height="100" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="42" fill="#4FC3F7" stroke="#2D3436" stroke-width="4"/>
+      <path d="M 38 30 Q 38 65 50 65 Q 62 65 62 30" fill="#E1F5FE" stroke="#2D3436" stroke-width="3"/>
+    </svg>
+  </div>
+  <div id="svg-pa">
+    <svg width="100" height="100" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="42" fill="#81C784" stroke="#2D3436" stroke-width="4"/>
+      <circle cx="50" cy="50" r="25" fill="#E8F5E9" stroke="#2D3436" stroke-width="3"/>
+    </svg>
+  </div>
+</div>
+
+</body>
+</html>
