@@ -2,7 +2,8 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Go (WASM) ‚¶‚á‚ñ‚¯‚ñƒQ[ƒ€</title>
+  <!-- UTF-8ãªã®ã«â€¦ã€‚ã€€-->
+  <title>Go (WASM) ã˜ã‚ƒã‚“ã‘ã‚“ã‚²ãƒ¼ãƒ </title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -95,7 +96,7 @@
     }
   </style>
 
-  <!-- Go WASM ƒCƒ“ƒ|[ƒg—p JavaScript -->
+  <!-- Go WASM ã‚¤ãƒ³ãƒãƒ¼ãƒˆç”¨ JavaScript -->
   <script src="wasm_exec.js"></script>
   <script>
     const go = new Go();
@@ -108,21 +109,21 @@
 
 <div class="game-container">
   <div class="main-area">
-    <!-- 1. ‡} / Ÿ”sŒ‹‰Ê -->
+    <!-- 1. åˆå›³ / å‹æ•—çµæžœ -->
     <div class="section">
-      <div id="signal" class="signal-text">ƒXƒy[ƒXƒL[‚ÅŠJŽn</div>
+      <div id="signal" class="signal-text">ã‚¹ãƒšãƒ¼ã‚¹ã‚­ãƒ¼ã§é–‹å§‹</div>
       <div id="result"></div>
     </div>
 
-    <!-- 2. ƒRƒ“ƒsƒ…[ƒ^‚ÌŽè -->
+    <!-- 2. ã‚³ãƒ³ãƒ”ãƒ¥ãƒ¼ã‚¿ã®æ‰‹ -->
     <div class="section">
       <div id="com-hand-container">
-        <!-- SVG‚ªƒ_ƒCƒiƒ~ƒbƒN‚É‘}“ü‚³‚ê‚Ü‚· -->
+        <!-- SVGãŒãƒ€ã‚¤ãƒŠãƒŸãƒƒã‚¯ã«æŒ¿å…¥ã•ã‚Œã¾ã™ -->
         <svg width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#f1f2f6" stroke="#2d3436" stroke-width="4"/></svg>
       </div>
     </div>
 
-    <!-- 3. Ž©•ª‚ÌŽè‘I‘ð -->
+    <!-- 3. è‡ªåˆ†ã®æ‰‹é¸æŠž -->
     <div class="section">
       <div class="player-hands">
         <div class="hand-card" id="card-gu">
@@ -130,44 +131,44 @@
             <circle cx="50" cy="50" r="42" fill="#FF8A65" stroke="#2D3436" stroke-width="4"/>
             <circle cx="50" cy="50" r="28" fill="#FFE0B2" stroke="#2D3436" stroke-width="3"/>
           </svg>
-          <span class="key-label">S (‚®[)</span>
+          <span class="key-label">S (ããƒ¼)</span>
         </div>
         <div class="hand-card" id="card-choki">
           <svg width="70" height="70" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="42" fill="#4FC3F7" stroke="#2D3436" stroke-width="4"/>
             <path d="M 38 30 Q 38 65 50 65 Q 62 65 62 30" fill="#E1F5FE" stroke="#2D3436" stroke-width="3"/>
           </svg>
-          <span class="key-label">G (‚¿‚å‚«)</span>
+          <span class="key-label">G (ã¡ã‚‡ã)</span>
         </div>
         <div class="hand-card" id="card-pa">
           <svg width="70" height="70" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="42" fill="#81C784" stroke="#2D3436" stroke-width="4"/>
             <circle cx="50" cy="50" r="25" fill="#E8F5E9" stroke="#2D3436" stroke-width="3"/>
           </svg>
-          <span class="key-label">K (‚Ï[)</span>
+          <span class="key-label">K (ã±ãƒ¼)</span>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- —š—ð•\Ž¦ -->
+  <!-- å±¥æ­´è¡¨ç¤º -->
   <div class="history-area">
-    <h3>‰ß‹Ž5í‚Ì—š—ð</h3>
+    <h3>éŽåŽ»5æˆ¦ã®å±¥æ­´</h3>
     <table>
       <thead>
-        <tr><th>‰ñ</th><th>COM</th><th>lŠÔ</th><th>Œ‹‰Ê</th></tr>
+        <tr><th>å›ž</th><th>COM</th><th>äººé–“</th><th>çµæžœ</th></tr>
       </thead>
       <tbody id="history-body"></tbody>
     </table>
     <div class="instruction">
-      y‘€ì•û–@z<br>
-      <b>[Space]</b>F‚¶‚á‚ñ‚¯‚ñŠJŽn<br>
-      <b>[S]</b>F‚®[ / <b>[G]</b>F‚¿‚å‚« / <b>[K]</b>F‚Ï[
+      ã€æ“ä½œæ–¹æ³•ã€‘<br>
+      <b>[Space]</b>ï¼šã˜ã‚ƒã‚“ã‘ã‚“é–‹å§‹<br>
+      <b>[S]</b>ï¼šããƒ¼ / <b>[G]</b>ï¼šã¡ã‚‡ã / <b>[K]</b>ï¼šã±ãƒ¼
     </div>
   </div>
 </div>
 
-<!-- ‰B‚µSVGƒeƒ“ƒvƒŒ[ƒgiGo‘¤‚©‚çƒp[ƒc‚Æ‚µ‚ÄŽg—pj -->
+<!-- éš ã—SVGãƒ†ãƒ³ãƒ—ãƒ¬ãƒ¼ãƒˆï¼ˆGoå´ã‹ã‚‰ãƒ‘ãƒ¼ãƒ„ã¨ã—ã¦ä½¿ç”¨ï¼‰ -->
 <div style="display:none;">
   <div id="svg-gu">
     <svg width="100" height="100" viewBox="0 0 100 100">
