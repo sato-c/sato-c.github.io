@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ドラゴン・騎士・姫 スピードじゃんけん！</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Maru Gothic ProN', 'Quicksand', sans-serif;
+      background: #f7f1e3;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: #2d3436;
+    }
+    .game-board {
+      width: 850px;
+      background: #ffffff;
+      border: 4px solid #2d3436;
+      border-radius: 24px;
+      box-shadow: 0 12px 0 #2d3436;
+      padding: 25px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .header {
+      text-align: center;
+    }
+    .message-box {
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: #ff6b6b;
+      min-height: 40px;
+    }
+    .area {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      background: #f1f2f6;
+      padding: 15px;
+      border-radius: 16px;
+      border: 2px dashed #dcdde1;
+    }
+    .field-area {
+      background: #ffeaa7;
+      border-color: #fdcb6e;
+    }
+    .card-slot {
+      width: 110px;
+      height: 150px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    .deck-info {
+      font-weight: bold;
+      font-size: 1.1rem;
+      background: #ffffff;
+      padding: 8px 15px;
+      border-radius: 20px;
+      border: 2px solid #2d3436;
+    }
+    .key-badge {
+      position: absolute;
+      bottom: -12px;
+      background: #ff6b6b;
+      color: white;
+      font-weight: 900;
+      padding: 2px 12px;
+      border-radius: 10px;
+      border: 2px solid #2d3436;
+      font-size: 1rem;
+      box-shadow: 0 2px 0 #2d3436;
+    }
+    .rule-guide {
+      display: flex;
+      justify-content: space-around;
+      background: #fff;
+      border: 2px solid #2d3436;
+      border-radius: 12px;
+      padding: 10px;
+      font-size: 0.95rem;
+      font-weight: bold;
+    }
+  </style>
+
+  <script src="wasm_exec.js"></script>
+  <script>
+    const go = new Go();
+    WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+      go.run(result.instance);
+    });
+  </script>
+</head>
+<body>
+
+<div class="game-board">
+  <div class="header">
+    <h2>⚔️ スピードじゃんけん ⚔️</h2>
+    <div id="message" class="message-box">読み込み中...</div>
+  </div>
+
+  <!-- CPUエリア -->
+  <div class="area">
+    <div class="deck-info">CPU 山札<br><span id="com-deck">残: 12</span></div>
+    <div id="com-hand-1" class="card-slot"></div>
+    <div id="com-hand-2" class="card-slot"></div>
+    <div id="com-hand-3" class="card-slot"></div>
+  </div>
+
+  <!-- 中央の場札エリア -->
+  <div class="area field-area">
+    <div id="field-left" class="card-slot"></div>
+    <div id="field-right" class="card-slot"></div>
+  </div>
+
+  <!-- プレイヤーエリア -->
+  <div class="area">
+    <div id="player-hand-1" class="card-slot"><span id="player-badge-1" class="key-badge">D</span></div>
+    <div id="player-hand-2" class="card-slot"><span id="player-badge-2" class="key-badge">K</span></div>
+    <div id="player-hand-3" class="card-slot"><span id="player-badge-3" class="key-badge">H</span></div>
+    <div class="deck-info">あなた 山札<br><span id="player-deck">残: 12</span></div>
+  </div>
+
+  <!-- 相性ガイド -->
+  <div class="rule-guide">
+    <div>[K] 🗡️ 騎士 ➔ 🐲 ドラゴン に勝ち！</div>
+    <div>[H] 👸 姫 ➔ 🗡️ 騎士 に勝ち！</div>
+    <div>[D] 🐲 ドラゴン ➔ 👸 姫 に勝ち！</div>
+  </div>
+</div>
+
+<!-- SVGテンプレート -->
+<div style="display:none;">
+  <div id="card-tpl-dragon">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="12" fill="#ff7675" stroke="#2d3436" stroke-width="4"/>
+      <text x="55" y="45" font-size="40" text-anchor="middle">🐲</text>
+      <text x="55" y="85" font-size="18" font-weight="900" fill="#fff" text-anchor="middle">ドラゴン</text>
+      <text x="55" y="115" font-size="11" font-weight="bold" fill="#2d3436" text-anchor="middle">姫に勝つ！</text>
+    </svg>
+  </div>
+
+  <div id="card-tpl-knight">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="12" fill="#74b9ff" stroke="#2d3436" stroke-width="4"/>
+      <text x="55" y="45" font-size="40" text-anchor="middle">🗡️</text>
+      <text x="55" y="85" font-size="18" font-weight="900" fill="#fff" text-anchor="middle">騎士</text>
+      <text x="55" y="115" font-size="11" font-weight="bold" fill="#2d3436" text-anchor="middle">竜に勝つ！</text>
+    </svg>
+  </div>
+
+  <div id="card-tpl-princess">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="12" fill="#fd79a8" stroke="#2d3436" stroke-width="4"/>
+      <text x="55" y="45" font-size="40" text-anchor="middle">👸</text>
+      <text x="55" y="85" font-size="18" font-weight="900" fill="#fff" text-anchor="middle">お姫様</text>
+      <text x="55" y="115" font-size="11" font-weight="bold" fill="#2d3436" text-anchor="middle">騎士に勝つ！</text>
+    </svg>
+  </div>
+
+  <div id="card-tpl-back">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="12" fill="#a29bfe" stroke="#2d3436" stroke-width="4"/>
+      <circle cx="55" cy="75" r="25" fill="#6c5ce7" stroke="#2d3436" stroke-width="3"/>
+      <text x="55" y="83" font-size="22" fill="#fff" text-anchor="middle">★</text>
+    </svg>
+  </div>
+</div>
+
+</body>
+</html>
