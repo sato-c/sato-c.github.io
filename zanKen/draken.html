@@ -3,24 +3,152 @@
 <head>
   <meta charset="UTF-8">
   <title>ドラゴン・騎士・姫 スピードじゃんけん！</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Hiragino Maru Gothic ProN','Quicksand',sans-serif;background:#f7f1e3;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#2d3436;user-select:none}.game-board{width:900px;background:#fff;border:4px solid #2d3436;border-radius:24px;box-shadow:0 12px 0 #2d3436;padding:25px;display:flex;flex-direction:column;gap:20px;position:relative}.header{text-align:center}.message-box{font-size:1.2rem;font-weight:900;color:#636e72;min-height:30px;margin-top:5px}.area{display:flex;justify-content:center;align-items:center;gap:15px;background:#f1f2f6;padding:15px;border-radius:16px;border:2px dashed #dcdde1;min-height:185px;flex-wrap:wrap}.field-area{background:#ffeaa7;border-color:#fdcb6e;gap:25px}.card-slot{width:110px;height:155px;display:flex;flex-direction:column;justify-content:center;align-items:center;position:relative}.deck-info{font-weight:700;font-size:1.1rem;background:#fff;padding:12px 20px;border-radius:20px;border:3px solid #2d3436;text-align:center;box-shadow:0 4px 0 #dcdde1}.key-badge{position:absolute;bottom:-10px;background:#ff6b6b;color:#fff;font-weight:900;padding:2px 14px;border-radius:12px;border:2px solid #2d3436;font-size:1.1rem;box-shadow:0 3px 0 #2d3436;z-index:10}.rule-guide{display:flex;justify-content:space-around;background:#fff;border:2px solid #2d3436;border-radius:12px;padding:12px;font-size:.95rem;font-weight:700}.center-overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(45,52,54,.95);color:#ffeaa7;padding:25px 40px;border-radius:24px;border:4px solid #ffeaa7;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.4);z-index:100;pointer-events:none;display:none;width:85%}.center-overlay .title{font-size:2.8rem;font-weight:900;text-shadow:2px 2px 0 #000;margin-bottom:8px}.center-overlay .subtitle{font-size:1.3rem;color:#fff;font-weight:700;line-height:1.5}</style>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Maru Gothic ProN', 'Quicksand', sans-serif;
+      background: #f7f1e3;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      color: #2d3436;
+      user-select: none;
+    }
+    .game-board {
+      width: 900px;
+      background: #ffffff;
+      border: 4px solid #2d3436;
+      border-radius: 24px;
+      box-shadow: 0 12px 0 #2d3436;
+      padding: 25px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+    .header {
+      text-align: center;
+    }
+    .message-box {
+      font-size: 1.2rem;
+      font-weight: 900;
+      color: #636e72;
+      min-height: 30px;
+      margin-top: 5px;
+    }
+    .area {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 15px;
+      background: #f1f2f6;
+      padding: 15px;
+      border-radius: 16px;
+      border: 2px dashed #dcdde1;
+      min-height: 185px;
+      flex-wrap: wrap;
+    }
+    .field-area {
+      background: #ffeaa7;
+      border-color: #fdcb6e;
+      gap: 25px;
+    }
+    .card-slot {
+      width: 110px;
+      height: 155px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    .deck-info {
+      font-weight: bold;
+      font-size: 1.1rem;
+      background: #ffffff;
+      padding: 12px 20px;
+      border-radius: 20px;
+      border: 3px solid #2d3436;
+      text-align: center;
+      box-shadow: 0 4px 0 #dcdde1;
+    }
+    .key-badge {
+      position: absolute;
+      bottom: -10px;
+      background: #ff6b6b;
+      color: white;
+      font-weight: 900;
+      padding: 2px 14px;
+      border-radius: 12px;
+      border: 2px solid #2d3436;
+      font-size: 1.1rem;
+      box-shadow: 0 3px 0 #2d3436;
+      z-index: 10;
+    }
+    .rule-guide {
+      display: flex;
+      justify-content: space-around;
+      background: #fff;
+      border: 2px solid #2d3436;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 0.95rem;
+      font-weight: bold;
+    }
+
+    /* 画面中央オーバーレイメッセージ */
+    .center-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(45, 52, 54, 0.95);
+      color: #ffeaa7;
+      padding: 25px 40px;
+      border-radius: 24px;
+      border: 4px solid #ffeaa7;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      z-index: 100;
+      pointer-events: none;
+      display: none;
+      width: 85%;
+    }
+    .center-overlay .title {
+      font-size: 2.8rem;
+      font-weight: 900;
+      text-shadow: 2px 2px 0 #000;
+      margin-bottom: 8px;
+    }
+    .center-overlay .subtitle {
+      font-size: 1.3rem;
+      color: #fff;
+      font-weight: bold;
+      line-height: 1.5;
+    }
+  </style>
 </head>
 <body>
 
 <div class="game-board">
+  <!-- 画面中央オーバーレイ（カウントダウン・結果用） -->
   <div id="center-overlay" class="center-overlay">
     <div id="overlay-title" class="title">3</div>
-    <div id="overlay-subtitle" class="subtitle"></div>
+    <div id="overlay-subtitle" class="subtitle">出せる手がない！勝負判定まで...</div>
   </div>
 
   <div class="header">
-    <h2>⚔️ スピードじゃんけん ⚔️</h2>
+    <h2>⚔️ スピードじゃんけん ⚔️️</h2>
+    <!-- div id="message" class="message-box">SHIFT + SPACE キーを押してゲーム開始！</div -->
     <div id="message" class="message-box">ENTER キーを押してゲーム開始！</div>
   </div>
 
+  <!-- CPUエリア -->
   <div style="text-align: center; font-weight: bold; margin-bottom: -10px;">CPU 手札: <span id="com-hand-count">3</span>枚</div>
   <div id="com-area" class="area"></div>
 
+  <!-- 中央の場札＆共通山札エリア -->
   <div class="area field-area">
     <div class="deck-info">共通山札<br><span id="shared-deck">残: 21</span><br><small style="font-size: 0.75rem; color: #d63031;">[SPACE]で引く</small></div>
     <div id="field-0" class="card-slot"></div>
@@ -28,9 +156,11 @@
     <div id="field-2" class="card-slot"></div>
   </div>
 
+  <!-- プレイヤーエリア -->
   <div style="text-align: center; font-weight: bold; margin-bottom: -10px;">あなた 手札: <span id="player-hand-count">3</span>枚</div>
   <div id="player-area" class="area"></div>
 
+  <!-- 操作＆相性ガイド -->
   <div class="rule-guide">
     <div>[K] 🗡️ 騎士 ➔ 🐲 竜</div>
     <div>[H] 👸 姫 ➔ 🗡️ 騎士</div>
@@ -39,15 +169,391 @@
   </div>
 </div>
 
+<!-- SVGイラスト定義 -->
 <div style="display:none;">
-  <div id="card-tpl-dragon"><svg width="110" height="150" viewBox="0 0 110 150"><rect x="5" y="5" width="100" height="140" rx="14" fill="#ff7675" stroke="#2d3436" stroke-width="4"/><path d="M 35 32 Q 25 15 20 25 Z" fill="#ffeaa7" stroke="#2d3436" stroke-width="2"/><path d="M 75 32 Q 85 15 90 25 Z" fill="#ffeaa7" stroke="#2d3436" stroke-width="2"/><circle cx="55" cy="65" r="32" fill="#fab1a0" stroke="#2d3436" stroke-width="3"/><circle cx="43" cy="60" r="5" fill="#2d3436"/><circle cx="67" cy="60" r="5" fill="#2d3436"/><circle cx="36" cy="68" r="4" fill="#ff7675" opacity="0.6"/><circle cx="74" cy="68" r="4" fill="#ff7675" opacity="0.6"/><path d="M 45 75 Q 55 85 65 75" fill="none" stroke="#2d3436" stroke-width="3" stroke-linecap="round"/><polygon points="48,75 52,75 50,80" fill="#fff" stroke="#2d3436" stroke-width="1"/><polygon points="58,75 62,75 60,80" fill="#fff" stroke="#2d3436" stroke-width="1"/><text x="55" y="118" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" stroke="#2d3436" stroke-width="1">ドラゴン</text><text x="55" y="136" font-size="10" font-weight="bold" fill="#2d3436" text-anchor="middle">姫に勝つ！</text></svg></div>
-  <div id="card-tpl-knight"><svg width="110" height="150" viewBox="0 0 110 150"><rect x="5" y="5" width="100" height="140" rx="14" fill="#74b9ff" stroke="#2d3436" stroke-width="4"/><path d="M 55 18 C 50 5 65 5 55 28" fill="#ff7675" stroke="#2d3436" stroke-width="2"/><circle cx="55" cy="62" r="32" fill="#dfe6e9" stroke="#2d3436" stroke-width="3"/><rect x="33" y="52" width="44" height="16" rx="8" fill="#2d3436"/><circle cx="44" cy="60" r="3.5" fill="#ffeaa7"/><circle cx="66" cy="60" r="3.5" fill="#ffeaa7"/><circle cx="38" cy="74" r="4" fill="#ff7675" opacity="0.5"/><circle cx="72" cy="74" r="4" fill="#ff7675" opacity="0.5"/><text x="55" y="118" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" stroke="#2d3436" stroke-width="1">騎士</text><text x="55" y="136" font-size="10" font-weight="bold" fill="#2d3436" text-anchor="middle">竜に勝つ！</text></svg></div>
-  <div id="card-tpl-princess"><svg width="110" height="150" viewBox="0 0 110 150"><rect x="5" y="5" width="100" height="140" rx="14" fill="#fd79a8" stroke="#2d3436" stroke-width="4"/><polygon points="40,32 45,20 55,28 65,20 70,32" fill="#ffeaa7" stroke="#2d3436" stroke-width="2"/><circle cx="55" cy="65" r="32" fill="#ffeaa7" stroke="#2d3436" stroke-width="3"/><circle cx="55" cy="67" r="25" fill="#ffe0b2"/><ellipse cx="44" cy="64" rx="3.5" ry="5" fill="#2d3436"/><ellipse cx="66" cy="64" rx="3.5" ry="5" fill="#2d3436"/><circle cx="45" cy="62" r="1" fill="#fff"/><circle cx="67" cy="62" r="1" fill="#fff"/><circle cx="38" cy="70" r="4" fill="#fd79a8" opacity="0.6"/><circle cx="72" cy="70" r="4" fill="#fd79a8" opacity="0.6"/><path d="M 48 73 Q 55 80 62 73" fill="none" stroke="#2d3436" stroke-width="2.5" stroke-linecap="round"/><text x="55" y="118" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" stroke="#2d3436" stroke-width="1">お姫様</text><text x="55" y="136" font-size="10" font-weight="bold" fill="#2d3436" text-anchor="middle">騎士に勝つ！</text></svg></div>
-  <div id="card-tpl-back"><svg width="110" height="150" viewBox="0 0 110 150"><rect x="5" y="5" width="100" height="140" rx="14" fill="#a29bfe" stroke="#2d3436" stroke-width="4"/><circle cx="55" cy="75" r="28" fill="#6c5ce7" stroke="#2d3436" stroke-width="3"/><text x="55" y="84" font-size="26" fill="#fff" text-anchor="middle">★</text></svg></div>
+  <!-- ドラゴン -->
+  <div id="card-tpl-dragon">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="14" fill="#ff7675" stroke="#2d3436" stroke-width="4"/>
+      <path d="M 35 32 Q 25 15 20 25 Z" fill="#ffeaa7" stroke="#2d3436" stroke-width="2"/>
+      <path d="M 75 32 Q 85 15 90 25 Z" fill="#ffeaa7" stroke="#2d3436" stroke-width="2"/>
+      <circle cx="55" cy="65" r="32" fill="#fab1a0" stroke="#2d3436" stroke-width="3"/>
+      <circle cx="43" cy="60" r="5" fill="#2d3436"/><circle cx="67" cy="60" r="5" fill="#2d3436"/>
+      <circle cx="36" cy="68" r="4" fill="#ff7675" opacity="0.6"/>
+      <circle cx="74" cy="68" r="4" fill="#ff7675" opacity="0.6"/>
+      <path d="M 45 75 Q 55 85 65 75" fill="none" stroke="#2d3436" stroke-width="3" stroke-linecap="round"/>
+      <polygon points="48,75 52,75 50,80" fill="#fff" stroke="#2d3436" stroke-width="1"/>
+      <polygon points="58,75 62,75 60,80" fill="#fff" stroke="#2d3436" stroke-width="1"/>
+      <text x="55" y="118" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" stroke="#2d3436" stroke-width="1">ドラゴン</text>
+      <text x="55" y="136" font-size="10" font-weight="bold" fill="#2d3436" text-anchor="middle">姫に勝つ！</text>
+    </svg>
+  </div>
+
+  <!-- 騎士 -->
+  <div id="card-tpl-knight">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="14" fill="#74b9ff" stroke="#2d3436" stroke-width="4"/>
+      <path d="M 55 18 C 50 5 65 5 55 28" fill="#ff7675" stroke="#2d3436" stroke-width="2"/>
+      <circle cx="55" cy="62" r="32" fill="#dfe6e9" stroke="#2d3436" stroke-width="3"/>
+      <rect x="33" y="52" width="44" height="16" rx="8" fill="#2d3436"/>
+      <circle cx="44" cy="60" r="3.5" fill="#ffeaa7"/>
+      <circle cx="66" cy="60" r="3.5" fill="#ffeaa7"/>
+      <circle cx="38" cy="74" r="4" fill="#ff7675" opacity="0.5"/>
+      <circle cx="72" cy="74" r="4" fill="#ff7675" opacity="0.5"/>
+      <text x="55" y="118" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" stroke="#2d3436" stroke-width="1">騎士</text>
+      <text x="55" y="136" font-size="10" font-weight="bold" fill="#2d3436" text-anchor="middle">竜に勝つ！</text>
+    </svg>
+  </div>
+
+  <!-- お姫様 -->
+  <div id="card-tpl-princess">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="14" fill="#fd79a8" stroke="#2d3436" stroke-width="4"/>
+      <polygon points="40,32 45,20 55,28 65,20 70,32" fill="#ffeaa7" stroke="#2d3436" stroke-width="2"/>
+      <circle cx="55" cy="65" r="32" fill="#ffeaa7" stroke="#2d3436" stroke-width="3"/>
+      <circle cx="55" cy="67" r="25" fill="#ffe0b2"/>
+      <ellipse cx="44" cy="64" rx="3.5" ry="5" fill="#2d3436"/>
+      <ellipse cx="66" cy="64" rx="3.5" ry="5" fill="#2d3436"/>
+      <circle cx="45" cy="62" r="1" fill="#fff"/><circle cx="67" cy="62" r="1" fill="#fff"/>
+      <circle cx="38" cy="70" r="4" fill="#fd79a8" opacity="0.6"/>
+      <circle cx="72" cy="70" r="4" fill="#fd79a8" opacity="0.6"/>
+      <path d="M 48 73 Q 55 80 62 73" fill="none" stroke="#2d3436" stroke-width="2.5" stroke-linecap="round"/>
+      <text x="55" y="118" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" stroke="#2d3436" stroke-width="1">お姫様</text>
+      <text x="55" y="136" font-size="10" font-weight="bold" fill="#2d3436" text-anchor="middle">騎士に勝つ！</text>
+    </svg>
+  </div>
+
+  <!-- 裏面 -->
+  <div id="card-tpl-back">
+    <svg width="110" height="150" viewBox="0 0 110 150">
+      <rect x="5" y="5" width="100" height="140" rx="14" fill="#a29bfe" stroke="#2d3436" stroke-width="4"/>
+      <circle cx="55" cy="75" r="28" fill="#6c5ce7" stroke="#2d3436" stroke-width="3"/>
+      <text x="55" y="84" font-size="26" fill="#fff" text-anchor="middle">★</text>
+    </svg>
+  </div>
 </div>
 
 <script>
-(function(_0x38b259,_0x1f06be){var _0x5109b8=_0x4ea8;while(!![]){try{var _0x12f458=parseInt(_0x5109b8(0x19a))/0x1+parseInt(_0x5109b8(0x1a8))/0x2+-parseInt(_0x5109b8(0x18a))/0x3+-parseInt(_0x5109b8(0x18b))/0x4*(-parseInt(_0x5109b8(0x194))/0x5)+parseInt(_0x5109b8(0x18c))/0x6+-parseInt(_0x5109b8(0x1a5))/0x7+parseInt(_0x5109b8(0x1a3))/0x8;if(_0x12f458===_0x1f06be)break;else _0x38b259['push'](_0x38b259['shift']());}catch(_0x3b85f2){_0x38b259['push'](_0x38b259['shift']());}}}(_0x3c7b,0x43a85));function _0x4ea8(_0x2d1747,_0x582103){_0x2d1747=_0x2d1747-0x183;var _0x3c7be9=_0x3c7b[_0x2d1747];return _0x3c7be9;}function _0x3c7b(){var _0x2bb90f=['\x6b\x65\x79\x2d\x62\x61\x64\x67\x65','\x73\x68\x6f\x77','\x33\x30\x39\x36\x37\x39\x32\x59\x52\x47\x64\x6b\x75','\x63\x6f\x6d\x2d\x61\x72\x65\x61','\x38\x35\x36\x39\x34\x30\x47\x41\x47\x69\x76\x53','\x70\x6c\x61\x79\x65\x72\x2d\x68\x61\x6e\x64\x2d\x63\x6f\x75\x6e\x74','\x31\x32\x32\x33\x33\x31\x32\x4d\x74\x6f\x78\x41\x70','\x63\x61\x72\x64\x2d\x73\x6c\x6f\x74','\x6f\x76\x65\x72\x6c\x61\x79\x2d\x73\x75\x62\x74\x69\x74\x6c\x65','\x64\x72\x61\x67\x6f\x6e','\x32\x30\x38\x39\x32\x33\x32\x6e\x4b\x4f\x44\x52\x67','\x6f\x76\x65\x72\x6c\x61\x79\x2d\x74\x69\x74\x6c\x65','\x6b\x6e\x69\x67\x68\x74','\x70\x72\x69\x6e\x63\x65\x73\x73','\x66\x69\x65\x6c\x64\x2d','\x63\x61\x72\x64\x2d\x74\x70\x6c\x2d','\x63\x6f\x6d\x2d\x68\x61\x6e\x64\x2d\x63\x6f\x75\x6e\x74','\x32\x32\x30\x31\x39\x37\x37\x68\x57\x6c\x48\x59\x51','\x32\x34\x34\x33\x32\x36\x30\x77\x55\x52\x4d\x74\x72','\x31\x38\x30\x31\x32\x36\x36\x57\x4d\x78\x46\x64\x44','\x73\x68\x61\x72\x65\x64\x2d\x64\x65\x63\x6b','\x70\x6c\x61\x79\x65\x72\x2d\x61\x72\x65\x61','\x63\x65\x6e\x74\x65\x72\x2d\x6f\x76\x65\x72\x6c\x61\x79','\x6d\x65\x73\x73\x61\x67\x65','\x62\x61\x63\x6b'];_0x3c7b=function(){return _0x2bb90f;};return _0x3c7b();}(function(){var _0x5352c8=_0x4ea8;var _0x4d={sd:[],ph:[],ch:[],fc:['','',''],ip:![],if:![],ct:null,cdt:null,cdv:0};function _0x1f(_0x221379,_0x1f0340){var _0x5b35a6=_0x5352c8;if(_0x221379===_0x5b35a6(0x18f)&&_0x1f0340===_0x5b35a6(0x18c))return!![];if(_0x221379===_0x5b35a6(0x190)&&_0x1f0340===_0x5b35a6(0x18f))return!![];if(_0x221379===_0x5b35a6(0x18c)&&_0x1f0340===_0x5b35a6(0x190))return!![];return![];}function _0x2a(){var _0x2056cd=_0x5352c8,_0xd1f5e8=[];for(var _0x2b4676=0x0;_0x2b4676<0xc;_0x2b4676++){_0xd1f5e8['push'](_0x2056cd(0x18c),_0x2056cd(0x18f),_0x2056cd(0x190));}for(var _0x415b02=_0xd1f5e8['length']-0x1;_0x415b02>0;_0x415b02--){var _0x277a83=Math['floor'](Math['random']()*(_0x415b02+0x1)),_0x42f067=_0xd1f5e8[_0x415b02];_0xd1f5e8[_0x415b02]=_0xd1f5e8[_0x277a83],_0xd1f5e8[_0x277a83]=_0x42f067;}return _0xd1f5e8;}function _0x3b(){var _0x5cf196=_0x5352c8;_0x4d['ip']=![],_0x4d['if']=![],_0x5c(),_0x6d();var _0x5997db=_0x2a();_0x4d['ph']=_0x5997db['splice'](0x0,0x3),_0x4d['ch']=_0x5997db['splice'](0x0,0x3),_0x4d['fc']=_0x5997db['splice'](0x0,0x3),_0x4d['sd']=_0x5997db,_0x7e(),_0x8f('ENTER\x20キーを押してゲーム開始！');}function _0x9e(){var _0x530c33=_0x5352c8;_0x4d['ip']=!![],_0x4d['if']=![],_0x6d(),_0x7e(),_0x8f('バトル開始！\x20[D][K][H]で出す\x20/\x20[SPACE]で引く'),_0x5c(),_0x4d['ct']=setInterval(_0xa1,0x320);}function _0x5c(){clearInterval(_0x4d['ct']),clearInterval(_0x4d['cdt']),_0x4d['cdt']=null,_0x4d['cdv']=0;}function _0xb2(_0x56a3e2){return _0x56a3e2['some'](function(_0x323e0d){return _0x4d['fc']['some'](function(_0x7ea9fb){return _0x1f(_0x323e0d,_0x7ea9fb);});});}function _0xc3(_0x5bce2b){if(!_0x4d['ip'])return;var _0x1e3678=_0x4d['ph']['indexOf'](_0x5bce2b);if(_0x1e3678===-0x1)return;var _0x4f3640=_0x4d['ph'][_0x1e3678],_0x5bd1bd=![];for(var _0x10d517=0x0;_0x10d517<0x3;_0x10d517++){if(_0x1f(_0x4f3640,_0x4d['fc'][_0x10d517])){_0x4d['fc'][_0x10d517]=_0x4f3640,_0x5bd1bd=!![];break;}}if(_0x5bd1bd){_0xd4(),_0x4d['ph']['splice'](_0x1e3678,0x1),_0x7e(),_0xe5();}}function _0xf6(){if(!_0x4d['ip'])return;_0x4d['sd']['length']>0?(_0x4d['ph']['push'](_0x4d['sd']['pop']()),_0xd4(),_0x7e(),_0xe5()):_0x8f('山札はもうありません！手札で勝負！');}function _0xa1(){if(!_0x4d['ip'])return;for(var _0x3e1ae7=0x0;_0x3e1ae7<_0x4d['ch']['length'];_0x3e1ae7++){var _0x3ee1b0=_0x4d['ch'][_0x3e1ae7];for(var _0x1c801e=0x0;_0x1c801e<0x3;_0x1c801e++){if(_0x1f(_0x3ee1b0,_0x4d['fc'][_0x1c801e])){_0x4d['fc'][_0x1c801e]=_0x3ee1b0,_0x4d['ch']['splice'](_0x3e1ae7,0x1),_0xd4(),_0x7e(),_0xe5();return;}}}if(_0x4d['sd']['length']>0){_0x4d['ch']['push'](_0x4d['sd']['pop']()),_0xd4(),_0x7e(),_0xe5();return;}_0xe5();}function _0xd4(){_0x4d['cdt']!==null&&(clearInterval(_0x4d['cdt']),_0x4d['cdt']=null,_0x4d['cdv']=0,_0x6d(),_0x8f('バトル再開！'));}function _0xe5(){if(!_0x4d['ip'])return;if(_0x4d['ph']['length']===0){_0x10a('🎉\x20あなたの勝ち！','見事にすべてのカードを出し切りました！');return;}if(_0x4d['ch']['length']===0){_0x10a('💀\x20CPUの勝ち…','CPUにすべてのカードを出されてしまいました！');return;}!_0xb2(_0x4d['ph'])&&!_0xb2(_0x4d['ch'])&&_0x4d['sd']['length']===0&&_0x4d['cdt']===null&&_0x11b();}function _0x11b(){_0x4d['cdv']=0x3,_0x12c(_0x4d['cdv'],'山札もなく出せる手もありません！<br>判定まで...'),_0x4d['cdt']=setInterval(function(){_0x4d['cdv']--;if(_0x4d['cdv']>0)_0x12c(_0x4d['cdv'],'山札もなく出せる手もありません！<br>判定まで...');else{clearInterval(_0x4d['cdt']),_0x4d['cdt']=null;var _0x1870ef=_0x4d['ph']['length'],_0x54625d=_0x4d['ch']['length'];_0x1870ef<_0x54625d?_0x10a('🎉\x20判定勝ち！','手札が少ないあなたの勝利！<br>（あなた:\x20'+_0x1870ef+'枚\x20/\x20CPU:\x20'+_0x54625d+'枚）'):_0x1870ef>_0x54625d?_0x10a('💀\x20判定負け…','手札が多いあなたの敗北…<br>（あなた:\x20'+_0x1870ef+'枚\x20/\x20CPU:\x20'+_0x54625d+'枚）'):_0x10a('🤝\x20引き分け！','両者とも残り手札:\x20'+_0x1870ef+'枚');}},0x3e8);}function _0x12c(_0x44cf53,_0x592dae){var _0x5109b8=_0x5352c8,_0x334eb2=document['getElementById'](_0x5109b8(0x19d));document['getElementById'](_0x5109b8(0x18e))['textContent']=_0x44cf53,document['getElementById'](_0x5109b8(0x18b))['innerHTML']=_0x592dae,_0x334eb2['style']['display']='block';}function _0x6d(){var _0x5109b8=_0x5352c8;document['getElementById'](_0x5109b8(0x19d))['style']['display']='none';}function _0x10a(_0x4bcfa0,_0x3f5ce0){_0x4d['ip']=![],_0x4d['if']=!![],_0x5c(),_0x12c(_0x4bcfa0,_0x3f5ce0+'<br><br><span\x20style=\x27font-size:\x201.1rem;\x20color:\x20#ffeaa7;\x27>(ENTER\x20で再戦)</span>'),_0x8f('ゲーム終了\x20-\x20ENTER\x20で再戦');}function _0x8f(_0x24249a){var _0x5109b8=_0x5352c8;document['getElementById'](_0x5109b8(0x19e))['textContent']=_0x24249a;}function _0x7e(){var _0x5109b8=_0x5352c8;document['getElementById'](_0x5109b8(0x19b))['textContent']='残:\x20'+_0x4d['sd']['length'];for(var _0x4d7990=0x0;_0x4d7990<0x3;_0x4d7990++)_0x13d(_0x5109b8(0x191)+_0x4d7990,_0x4d['fc'][_0x4d7990]);document['getElementById'](_0x5109b8(0x193))['textContent']=_0x4d['ch']['length'];var _0x2724dd=document['getElementById'](_0x5109b8(0x186));_0x2724dd['innerHTML']='';_0x4d['ch']['forEach'](function(){var _0x5109b8=_0x4ea8,_0x38eb76=document['createElement']('div');_0x38eb76['className']=_0x5109b8(0x18a),_0x2724dd['appendChild'](_0x38eb76),_0x14e(_0x38eb76,_0x5109b8(0x19f));});document['getElementById'](_0x5109b8(0x188))['textContent']=_0x4d['ph']['length'];var _0x2c6e6b=document['getElementById'](_0x5109b8(0x19c));_0x2c6e6b['innerHTML']='';_0x4d['ph']['forEach'](function(_0x519808){var _0x5109b8=_0x5352c8,_0x4eeef5=document['createElement']('div');_0x4eeef5['className']=_0x5109b8(0x18a),_0x2c6e6b['appendChild'](_0x4eeef5),_0x14e(_0x4eeef5,_0x519808);var _0x4c20aa=document['createElement']('span');_0x4c20aa['className']=_0x5109b8(0x183),_0x4c20aa['textContent']=_0x519808===_0x5109b8(0x18c)?'D':_0x519808===_0x5109b8(0x18f)?'K':'H',_0x4eeef5['appendChild'](_0x4c20aa);});}function _0x13d(_0x3ea794,_0xd4cc80){if(document['getElementById'](_0x3ea794))_0x14e(document['getElementById'](_0x3ea794),_0xd4cc80);}function _0x14e(_0xd108d4,_0x4fa5ae){var _0x5109b8=_0x5352c8;if(!_0x4fa5ae||_0x4fa5ae==='empty'){_0xd108d4['innerHTML']='';return;}var _0x3b89b1=document['getElementById'](_0x5109b8(0x192)+_0x4fa5ae);_0xd108d4['innerHTML']=_0x3b89b1?_0x3b89b1['innerHTML']:'';}window['addEventListener']('keydown',function(_0x55cae5){var _0x5109b8=_0x5352c8,_0x446be9=_0x55cae5['key']['toUpperCase']();if(_0x55cae5['code']==='Enter'){_0x55cae5['preventDefault']();if(!_0x4d['ip']&&!_0x4d['if'])_0x9e();else _0x4d['if']&&_0x3b();return;}if(_0x55cae5['code']==='Space'){_0x55cae5['preventDefault'](),_0x4d['ip']&&_0xf6();return;}_0x446be9==='D'&&_0xc3(_0x5109b8(0x18c)),_0x446be9==='K'&&_0xc3(_0x5109b8(0x18f)),_0x446be9==='H'&&_0xc3(_0x5109b8(0x190));});_0x3b();})();
+  const state = {
+    sharedDeck: [],
+    playerHand: [],
+    comHand: [],
+    fieldCards: ["", "", ""],
+    isPlaying: false,
+    isFinished: false,
+    cpuTimer: null,
+    countdownTimer: null,
+    countdownValue: 0
+  };
+
+  // じゃんけん勝敗（cardA が cardB に勝つか）
+  function wins(cardA, cardB) {
+    if (cardA === "knight" && cardB === "dragon") return true;
+    if (cardA === "princess" && cardB === "knight") return true;
+    if (cardA === "dragon" && cardB === "princess") return true;
+    return false;
+  }
+
+  // 36枚のデッキ作成（ドラゴン12 / 騎士12 / 姫12）＆シャッフル
+  function createFullDeck() {
+    const deck = [];
+    for (let i = 0; i < 12; i++) {
+      deck.push("dragon", "knight", "princess");
+    }
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  }
+
+  function initGame() {
+    state.isPlaying = false;
+    state.isFinished = false;
+    stopAllTimers();
+    hideOverlay();
+
+    // デッキ準備（全36枚）
+    const deck = createFullDeck();
+    state.playerHand = deck.splice(0, 3);
+    state.comHand = deck.splice(0, 3);
+    state.fieldCards = deck.splice(0, 3); // 最初の場札3枚
+    state.sharedDeck = deck; // 残り21枚
+
+    updateUI();
+//    setMessage("SHIFT + SPACE キーを押してバトルスタート！");
+    setMessage("ENTER キーを押してバトルスタート！");
+  }
+
+  function startGame() {
+    state.isPlaying = true;
+    state.isFinished = false;
+    hideOverlay();
+
+    updateUI();
+    setMessage("バトル開始！ [D][K][H]で出す / [SPACE]で引く");
+
+    stopAllTimers();
+    state.cpuTimer = setInterval(cpuRoutine, 800);
+  }
+
+  function stopAllTimers() {
+    clearInterval(state.cpuTimer);
+    clearInterval(state.countdownTimer);
+    state.countdownTimer = null;
+    state.countdownValue = 0;
+  }
+
+  // 手札から場札に出せるカードがあるか
+  function canPlay(hand) {
+    return hand.some(card => state.fieldCards.some(fieldCard => wins(card, fieldCard)));
+  }
+
+  // プレイヤーがカードを出す処理
+  function playPlayerCard(targetCard) {
+    if (!state.isPlaying) return;
+
+    const handIndex = state.playerHand.indexOf(targetCard);
+    if (handIndex === -1) return;
+
+    const card = state.playerHand[handIndex];
+    let played = false;
+
+    // 3枚の場札のいずれかに勝てるかチェック
+    for (let i = 0; i < 3; i++) {
+      if (wins(card, state.fieldCards[i])) {
+        state.fieldCards[i] = card;
+        played = true;
+        break;
+      }
+    }
+
+    if (played) {
+      cancelCountdownIfNeeded();
+      state.playerHand.splice(handIndex, 1); // 出したら自動補充なしで手札が減る！
+      updateUI();
+      checkGameEnd();
+    }
+  }
+
+  // プレイヤーが共通山札から1枚引く処理
+  function drawPlayerCard() {
+    if (!state.isPlaying) return;
+
+    if (state.sharedDeck.length > 0) {
+      state.playerHand.push(state.sharedDeck.pop());
+      cancelCountdownIfNeeded();
+      updateUI();
+      checkGameEnd();
+    } else {
+      setMessage("山札はもうありません！手札で勝負！");
+    }
+  }
+
+  // CPUのAI思考＆行動
+  function cpuRoutine() {
+    if (!state.isPlaying) return;
+
+    // 1. 出せる手札があるか探す
+    for (let i = 0; i < state.comHand.length; i++) {
+      const card = state.comHand[i];
+      for (let f = 0; f < 3; f++) {
+        if (wins(card, state.fieldCards[f])) {
+          state.fieldCards[f] = card;
+          state.comHand.splice(i, 1);
+          cancelCountdownIfNeeded();
+          updateUI();
+          checkGameEnd();
+          return;
+        }
+      }
+    }
+
+    // 2. 出せる札がなく、山札があれば引く
+    if (state.sharedDeck.length > 0) {
+      state.comHand.push(state.sharedDeck.pop());
+      cancelCountdownIfNeeded();
+      updateUI();
+      checkGameEnd();
+      return;
+    }
+
+    // 3. 出せる札も山札もない場合はそのまま手詰まり判定へ
+    checkGameEnd();
+  }
+
+  function cancelCountdownIfNeeded() {
+    if (state.countdownTimer !== null) {
+      clearInterval(state.countdownTimer);
+      state.countdownTimer = null;
+      state.countdownValue = 0;
+      hideOverlay();
+      setMessage("バトル再開！");
+    }
+  }
+
+  // 勝敗＆手詰まりチェック
+  function checkGameEnd() {
+    if (!state.isPlaying) return;
+
+    // 即時ノックアウト勝利判定（手札が0枚になったら勝ち）
+    if (state.playerHand.length === 0) {
+      endGame("🎉 あなたの勝ち！", "見事にすべてのカードを出し切りました！");
+      return;
+    }
+    if (state.comHand.length === 0) {
+      endGame("💀 CPUの勝ち…", "CPUにすべてのカードを出されてしまいました！");
+      return;
+    }
+
+    // 手詰まりチェック（お互い出せる手がない ＆ 山札が0枚）
+    const playerCanPlay = canPlay(state.playerHand);
+    const comCanPlay = canPlay(state.comHand);
+
+    if (!playerCanPlay && !comCanPlay && state.sharedDeck.length === 0) {
+      if (state.countdownTimer === null) {
+        startCountDown();
+      }
+    }
+  }
+
+  // 画面中央での3カウントダウン
+  function startCountDown() {
+    state.countdownValue = 3;
+    showOverlay(state.countdownValue, "山札もなく出せる手もありません！<br>判定まで...");
+
+    state.countdownTimer = setInterval(() => {
+      state.countdownValue--;
+      if (state.countdownValue > 0) {
+        showOverlay(state.countdownValue, "山札もなく出せる手もありません！<br>判定まで...");
+      } else {
+        clearInterval(state.countdownTimer);
+        state.countdownTimer = null;
+
+        const playerLen = state.playerHand.length;
+        const comLen = state.comHand.length;
+
+        if (playerLen < comLen) {
+          endGame("🎉 判定勝ち！", `手札が少ないあなたの勝利！<br>（あなた: ${playerLen}枚 / CPU: ${comLen}枚）`);
+        } else if (playerLen > comLen) {
+          endGame("💀 判定負け…", `手札が多いあなたの敗北…<br>（あなた: ${playerLen}枚 / CPU: ${comLen}枚）`);
+        } else {
+          endGame("🤝 引き分け！", `両者とも残り手札: ${playerLen}枚`);
+        }
+      }
+    }, 1000);
+  }
+
+  function showOverlay(title, subtitle) {
+    const el = document.getElementById("center-overlay");
+    document.getElementById("overlay-title").textContent = title;
+    document.getElementById("overlay-subtitle").innerHTML = subtitle;
+    el.style.display = "block";
+  }
+
+  function hideOverlay() {
+    document.getElementById("center-overlay").style.display = "none";
+  }
+
+  function endGame(title, subtitle) {
+    state.isPlaying = false;
+    state.isFinished = true;
+    stopAllTimers();
+//    showOverlay(title, subtitle + "<br><br><span style='font-size: 1.1rem; color: #ffeaa7;'>(SHIFT + SPACE で再戦)</span>");
+//    setMessage("ゲーム終了 - SHIFT + SPACE で再戦");
+    showOverlay(title, subtitle + "<br><br><span style='font-size: 1.1rem; color: #ffeaa7;'>(ENTER で再戦)</span>");
+    setMessage("ゲーム終了 - ENTER で再戦");
+  }
+
+  function setMessage(msg) {
+    document.getElementById("message").textContent = msg;
+  }
+
+  function updateUI() {
+    // 共通山札枚数
+    document.getElementById("shared-deck").textContent = "残: " + state.sharedDeck.length;
+
+    // 場札3枚
+    for (let i = 0; i < 3; i++) {
+      renderCardSlot(`field-${i}`, state.fieldCards[i]);
+    }
+
+    // CPUエリア（枚数分の裏面を表示）
+    document.getElementById("com-hand-count").textContent = state.comHand.length;
+    const comArea = document.getElementById("com-area");
+    comArea.innerHTML = "";
+    state.comHand.forEach(() => {
+      const slot = document.createElement("div");
+      slot.className = "card-slot";
+      comArea.appendChild(slot);
+      renderCardSlotEl(slot, "back");
+    });
+
+    // プレイヤーエリア（手札＋キーバッジ）
+    document.getElementById("player-hand-count").textContent = state.playerHand.length;
+    const playerArea = document.getElementById("player-area");
+    playerArea.innerHTML = "";
+    state.playerHand.forEach((card) => {
+      const slot = document.createElement("div");
+      slot.className = "card-slot";
+      playerArea.appendChild(slot);
+      renderCardSlotEl(slot, card);
+
+      const badgeKey = card === "dragon" ? "D" : card === "knight" ? "K" : "H";
+      const badge = document.createElement("span");
+      badge.className = "key-badge";
+      badge.textContent = badgeKey;
+      slot.appendChild(badge);
+    });
+  }
+
+  function renderCardSlot(elementId, cardType) {
+    const el = document.getElementById(elementId);
+    if (el) renderCardSlotEl(el, cardType);
+  }
+
+  function renderCardSlotEl(el, cardType) {
+    if (!cardType || cardType === "empty") {
+      el.innerHTML = "";
+      return;
+    }
+    const tpl = document.getElementById("card-tpl-" + cardType);
+    el.innerHTML = tpl ? tpl.innerHTML : "";
+  }
+
+  // キーボード操作
+  window.addEventListener("keydown", (e) => {
+    const key = e.key.toUpperCase();
+
+    // SHIFT + SPACE でスタート / リトライ
+//    if (e.code === "Space" && e.shiftKey) {
+    if (e.code === "Enter") {
+      e.preventDefault();
+      if (!state.isPlaying && !state.isFinished) {
+        startGame();
+      } else if (state.isFinished) {
+        initGame();
+      }
+      return;
+    }
+
+    // 単体 SPACE で山札からドロー
+    if (e.code === "Space" && !e.shiftKey) {
+      e.preventDefault();
+      if (state.isPlaying) {
+        drawPlayerCard();
+      }
+      return;
+    }
+
+    // [D][K][H] キー操作
+    if (key === "D") playPlayerCard("dragon");
+    if (key === "K") playPlayerCard("knight");
+    if (key === "H") playPlayerCard("princess");
+  });
+
+  // 初期化
+  initGame();
 </script>
 
 </body>
