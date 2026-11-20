@@ -1,0 +1,7 @@
+devid=sato_c
+devtitle=satoshi
+gameid=sideaction
+gametitle=Side Action
+version=0.1
+icon=metadata/icon.png
+ 
